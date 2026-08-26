@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# database (runtime data — do NOT commit; generated from seed-data.json)
+tmm.db
+tmm.db-wal
+tmm.db-shm
+
+# logs & temp
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# env / secrets (ถ้ามีในอนาคต)
+.env

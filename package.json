@@ -1,0 +1,14 @@
+{
+  "name": "ofero-tmm-system",
+  "version": "0.1.0",
+  "description": "Ofero Trade Marketing Manager system — dashboard, dealers, events, POSM",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node db.js --seed"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2"
+  }
+}
