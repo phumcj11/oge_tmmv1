@@ -260,3 +260,26 @@ th{background:#fafbfc;letter-spacing:.2px}
 .asg-tag{display:inline-block;background:#eef7e9;color:#2E9E1E;border:1px solid #d3ecc6;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600;margin:1px 0}
 #teamtable td .sub{display:block;font-size:11px;color:#98a2b3;margin-top:2px}
 @media(max-width:640px){.team-sum{grid-template-columns:repeat(2,1fr)}}
+
+/* ---- Gantt timeline ---- */
+.gantt{overflow-x:auto;padding-bottom:6px}
+.gt-inner{min-width:760px}
+.gt-monthrow,.gt-group,.gt-row{display:grid;grid-template-columns:210px 1fr;align-items:stretch}
+.gt-label{padding:8px 12px 8px 4px;font-size:13px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;border-right:2px solid #eef1ec}
+.gt-label small{display:block;font-weight:500;color:#98a2b3;font-size:11px;margin-top:1px}
+.gt-label.sp{border-right:2px solid #eef1ec}
+.gt-track{position:relative;min-height:34px;border-bottom:1px solid #f1f4ee}
+.gt-months{display:flex;height:34px}
+.gt-mon{border-left:1px solid #e6ebe2;font-size:12px;font-weight:700;color:#5a6470;padding:8px 6px;box-sizing:border-box;white-space:nowrap;overflow:hidden}
+.gt-mon small{color:#aeb6bf;margin-left:3px;font-weight:600}
+.gt-monthrow{border-bottom:2px solid #e6ebe2;background:#fafbf8;position:sticky;top:0;z-index:2}
+.gt-group{background:#f7faf4}
+.gt-glabel{padding:6px 12px 6px 4px;font-size:12px;font-weight:700;color:#2E9E1E;border-right:2px solid #eef1ec;align-self:center}
+.gt-gtrack,.gt-group .gt-gtrack{position:relative;border-bottom:1px solid #e6ebe2}
+.gt-row{cursor:pointer}
+.gt-row:hover{background:#f6faf3}
+.gt-bar{position:absolute;top:6px;height:22px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.18);display:flex;align-items:center;min-width:8px;overflow:hidden}
+.gt-bar span{color:#fff;font-size:11px;font-weight:600;padding:0 7px;white-space:nowrap;text-shadow:0 1px 1px rgba(0,0,0,.25)}
+.gt-bar.late{outline:2px solid #c62828;outline-offset:1px}
+.gt-today{position:absolute;top:0;bottom:0;width:2px;background:#e53935;z-index:1;pointer-events:none}
+.today-dot{background:#e53935 !important;border-radius:0 !important;width:3px !important;height:12px;display:inline-block}

@@ -412,11 +412,11 @@ async function renderEvents() {
     ${kpi('Training (เป้า vs ผล)', act.train, tgt.train, 'คน')}
   </div>
   <div class="card"><div class="toolbar"><h2 style="margin:0">🎪 กิจกรรม ARM</h2>
-    <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button><button class="vt ${eventView==='board'?'on':''}" id="vboard">🎯 Board</button><button class="vt ${eventView==='performance'?'on':''}" id="vperf">📊 Performance</button><button class="vt ${eventView==='team'?'on':''}" id="vteam">👷 ติดตามทีม</button></div>
+    <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button><button class="vt ${eventView==='board'?'on':''}" id="vboard">🎯 Board</button><button class="vt ${eventView==='gantt'?'on':''}" id="vgantt">📅 Gantt</button><button class="vt ${eventView==='performance'?'on':''}" id="vperf">📊 Performance</button><button class="vt ${eventView==='team'?'on':''}" id="vteam">👷 ติดตามทีม</button></div>
     <span class="spacer"></span>
     <button class="btn editor-only" id="enew">➕ กิจกรรมใหม่</button>
     <button class="btn ghost" id="eexport">⬇ Export CSV</button></div>
-    ${eventView==='calendar' ? buildCalendar() : eventView==='board' ? buildBoard() : eventView==='performance' ? buildPerformance() : eventView==='team' ? buildTeam() : `<div class="scroll"><table id="etable">
+    ${eventView==='calendar' ? buildCalendar() : eventView==='gantt' ? buildGantt() : eventView==='board' ? buildBoard() : eventView==='performance' ? buildPerformance() : eventView==='team' ? buildTeam() : `<div class="scroll"><table id="etable">
       <tr><th>กิจกรรม</th><th>ร้าน/สาขา</th><th>ประเภท</th><th>ระดับ</th><th>วันที่</th><th>สถานะ</th>
         <th class="num">Sell-out</th><th class="num">Lead</th><th class="num">Test</th><th class="num">Train</th><th></th></tr>
       ${eventCache.length ? eventCache.map(e => {
@@ -438,9 +438,11 @@ async function renderEvents() {
   $('#vboard').addEventListener('click', () => { eventView='board'; renderEvents(); });
   $('#vperf').addEventListener('click', () => { eventView='performance'; renderEvents(); });
   $('#vteam').addEventListener('click', () => { eventView='team'; renderEvents(); });
+  $('#vgantt').addEventListener('click', () => { eventView='gantt'; renderEvents(); });
   if (eventView==='calendar') wireCalendar();
   if (eventView==='board') wireBoard();
   if (eventView==='team') wireTeam();
+  if (eventView==='gantt') wireGantt();
   const enew = $('#enew');
   if (enew) enew.addEventListener('click', () => openEventEditor(null));
   $('#eexport').addEventListener('click', () => exportCSV('events.csv',
@@ -493,6 +495,87 @@ function wireCalendar() {
     }));
 }
 
+// ---- Event Gantt (timeline) ----
+const THMON = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+function toDate(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) { const d = new Date(s.slice(0, 10) + 'T00:00:00'); return isNaN(d) ? null : d; }
+  // Thai text date e.g. "19 ก.ย. 69" (Buddhist year, 2-digit) or "24 ต.ค. 2569"
+  const m = s.match(/^(\d{1,2})\s+([ก-ฮ.]+)\s+(\d{2,4})$/);
+  if (m) {
+    const mi = THMON.indexOf(m[2]);
+    if (mi < 0) return null;
+    let y = +m[3]; if (y < 100) y += 2500; if (y > 2400) y -= 543; // BE→CE
+    const d = new Date(y, mi, +m[1]); return isNaN(d) ? null : d;
+  }
+  const d = new Date(s); return isNaN(d) ? null : d;
+}
+function dDiff(a, b) { return Math.round((b - a) / 86400000); }
+function evSpan(e) {
+  const s = toDate(e.start_date || e.event_date);
+  if (!s) return null;
+  let end = toDate(e.end_date);
+  if (!end) { const dur = Math.max(1, +e.duration_days || 1); end = new Date(s); end.setDate(end.getDate() + dur - 1); }
+  if (end < s) end = s;
+  return { s, end };
+}
+function buildGantt() {
+  const rows = eventCache.map(e => ({ e, sp: evSpan(e) })).filter(x => x.sp);
+  const noDate = eventCache.filter(e => !evSpan(e));
+  if (!rows.length) return '<div class="card muted" style="text-align:center;padding:30px">ยังไม่มีกิจกรรมที่ระบุวันเริ่ม — ใส่วันเริ่มในกิจกรรมเพื่อแสดง Gantt</div>';
+  let min = rows[0].sp.s, max = rows[0].sp.end;
+  rows.forEach(r => { if (r.sp.s < min) min = r.sp.s; if (r.sp.end > max) max = r.sp.end; });
+  // pad to whole months
+  min = new Date(min.getFullYear(), min.getMonth(), 1);
+  max = new Date(max.getFullYear(), max.getMonth() + 1, 0);
+  const total = dDiff(min, max) + 1;
+  const pct = n => (100 * n / total) + '%';
+  // month header segments
+  let months = '', cur = new Date(min);
+  while (cur <= max) {
+    const mEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+    const segEnd = mEnd < max ? mEnd : max;
+    const w = 100 * (dDiff(cur, segEnd) + 1) / total;
+    months += `<div class="gt-mon" style="width:${w}%">${THMON[cur.getMonth()]}<small>${String(cur.getFullYear() + 543).slice(2)}</small></div>`;
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  }
+  // today line
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayLine = (today >= min && today <= max) ? `<div class="gt-today" style="left:${pct(dDiff(min, today))}"></div>` : '';
+  // group by dealer, sort groups by earliest start
+  const groups = {};
+  rows.forEach(r => { const k = r.e.dealer_name || r.e.company || 'ไม่ระบุร้าน'; (groups[k] = groups[k] || []).push(r); });
+  const order = Object.keys(groups).sort((a, b) => Math.min(...groups[a].map(r => r.sp.s)) - Math.min(...groups[b].map(r => r.sp.s)));
+  let body = '';
+  order.forEach(g => {
+    body += `<div class="gt-group"><div class="gt-glabel">🏪 ${esc(g)}</div><div class="gt-gtrack">${todayLine}</div></div>`;
+    groups[g].sort((a, b) => a.sp.s - b.sp.s).forEach(({ e, sp }) => {
+      const left = pct(dDiff(min, sp.s));
+      const w = 100 * (dDiff(sp.s, sp.end) + 1) / total;
+      const late = sp.end < today && e.status !== 'done' && e.status !== 'cancelled';
+      const color = EV_TCOLOR[e.type] || '#78909c';
+      const dstr = sp.s.getDate() + ' ' + THMON[sp.s.getMonth()] + (dDiff(sp.s, sp.end) ? '–' + sp.end.getDate() + ' ' + THMON[sp.end.getMonth()] : '');
+      body += `<div class="gt-row" data-id="${e.id}">
+        <div class="gt-label" title="${esc(e.activity_name||'')}">${esc(e.activity_name || EV_TYPE[e.type] || 'กิจกรรม')}<small>${EV_STATUS[e.status]||''}</small></div>
+        <div class="gt-track">${todayLine}
+          <div class="gt-bar${late?' late':''}" style="left:${left};width:${w}%;background:${color}" title="${esc(e.activity_name||'')} · ${dstr}"><span>${dstr}</span></div>
+        </div></div>`;
+    });
+  });
+  const legend = Object.keys(EV_TYPE).map(k => `<span class="cal-lg"><i style="background:${EV_TCOLOR[k]}"></i>${EV_TYPE[k]}</span>`).join('');
+  return `<div class="gantt"><div class="gt-inner">
+    <div class="gt-monthrow"><div class="gt-label sp"></div><div class="gt-track gt-months">${months}</div></div>
+    ${body}
+  </div></div>
+  <div class="cal-foot"><div class="cal-legend">${legend}<span class="cal-lg"><i style="background:repeating-linear-gradient(45deg,#c62828,#c62828 3px,#fff 3px,#fff 6px)"></i>เลยกำหนด</span><span class="cal-lg"><i class="today-dot"></i>วันนี้</span></div>
+  <span class="muted">คลิกแท่งกิจกรรมเพื่อดู/แก้ไข</span></div>
+  ${noDate.length?`<div class="muted" style="margin-top:8px">⏳ อีก ${noDate.length} กิจกรรมยังไม่ระบุวันเริ่ม (ไม่แสดงบน Gantt)</div>`:''}`;
+}
+function wireGantt() {
+  document.querySelectorAll('#events .gt-row').forEach(r => r.addEventListener('click', () =>
+    openEventEditor(eventCache.find(x => x.id == r.dataset.id))));
+}
 // ---- Event Board (Kanban) ----
 function apReadiness(e) { const ap = Array.isArray(e.action_plan) ? e.action_plan : []; return ap.length ? Math.round(100 * ap.filter(a => a.done).length / ap.length) : null; }
 function buildBoard() {
