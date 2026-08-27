@@ -165,82 +165,187 @@ function drawDealers() {
   }));
 }
 
-// ================= EVENTS =================
-let eventCache = [];
+// ================= EVENTS (aligned to Lark "กิจกรรม ARM" form) =================
+let eventCache = [], eventProducts = [];
+const EV_TYPE = { activation:'กิจกรรมหน้าร้าน', training:'อบรม', testride:'ทดลองขับ', other:'อื่นๆ' };
+const EV_DEPT = ['Branding', 'Back Office'];
+const EV_STATUS = { planned:'วางแผน', confirmed:'ยืนยันแล้ว', done:'จัดเสร็จ', cancelled:'ยกเลิก' };
+const achv = (a, t) => t > 0 ? Math.round(100 * a / t) : 0;
+const achvColor = p => p >= 100 ? '#2e7d32' : p >= 60 ? '#ef6c00' : '#e53935';
+
 async function renderEvents() {
-  eventCache = await api('/api/events');
+  const [ev, ov, dl] = await Promise.all([api('/api/events'), api('/api/overview'), api('/api/dealers')]);
+  eventCache = ev; eventProducts = ov.products.map(p => p.model); dealerCache = dl;
   const el = $('#events');
-  const totBudget = eventCache.reduce((s,e)=>s+e.budget,0);
-  const done = eventCache.filter(e=>e.status==='done').length;
-  const leads = eventCache.reduce((s,e)=>s+e.leads,0);
-  const testRides = eventCache.reduce((s,e)=>s+(e.test_ride||0),0);
-  const sales = eventCache.reduce((s,e)=>s+e.sales_units,0);
+  const sum = (k) => eventCache.reduce((s, e) => s + (+e[k] || 0), 0);
+  const tgt = { sellout: sum('target_sellout'), lead: sum('target_lead'), test: sum('target_testride'), train: sum('target_training') };
+  const act = { sellout: sum('sales_units'), lead: sum('leads'), test: sum('test_ride'), train: sum('act_training') };
+  const kpi = (label, a, t, unit) => `<div class="kpi"><div class="l">${label}</div><div class="v" style="color:${achvColor(achv(a,t))}">${a}<span style="font-size:14px;color:#98a2b3">/${t}</span></div><div class="s">${achv(a,t)}% ของเป้า · ${unit}</div></div>`;
   el.innerHTML = `
   <div class="kpis">
-    <div class="kpi"><div class="l">Event ทั้งหมด</div><div class="v">${eventCache.length}</div><div class="s">${done} จัดแล้ว</div></div>
-    <div class="kpi"><div class="l">Lead รวม</div><div class="v" style="color:#00897B">${leads}</div><div class="s">ราย</div></div>
-    <div class="kpi"><div class="l">Test Ride รวม</div><div class="v" style="color:#00897B">${testRides}</div><div class="s">ครั้ง</div></div>
-    <div class="kpi"><div class="l">ปิดการขาย</div><div class="v" style="color:#6A1B9A">${sales}</div><div class="s">คัน</div></div>
-    <div class="kpi"><div class="l">Conversion</div><div class="v" style="color:#1565C0">${leads?Math.round(100*sales/leads):0}%</div><div class="s">ขาย ÷ Lead</div></div>
+    <div class="kpi"><div class="l">กิจกรรมทั้งหมด</div><div class="v">${eventCache.length}</div><div class="s">${eventCache.filter(e=>e.status==='done').length} จัดเสร็จ</div></div>
+    ${kpi('Sell-out (เป้า vs ผล)', act.sellout, tgt.sellout, 'คัน')}
+    ${kpi('Lead (เป้า vs ผล)', act.lead, tgt.lead, 'ราย')}
+    ${kpi('Test Ride (เป้า vs ผล)', act.test, tgt.test, 'คน')}
+    ${kpi('Training (เป้า vs ผล)', act.train, tgt.train, 'คน')}
   </div>
-  <div class="card">
-    <div class="toolbar"><h2 style="margin:0">🎪 ตารางจัด Event</h2><span class="muted">แก้สถานะ/กรอกผลได้</span>
-      <span class="spacer"></span>
-      <button class="btn ghost" id="eadd">➕ เพิ่ม Event</button>
-      <button class="btn ghost" id="eexport">⬇ Export CSV</button></div>
-    <div class="scroll"><table id="etable"></table></div></div>`;
+  <div class="card"><div class="toolbar"><h2 style="margin:0">🎪 กิจกรรม ARM</h2><span class="muted">เก็บข้อมูลตามฟอร์ม Lark + ติดตามเป้า vs ผล</span>
+    <span class="spacer"></span>
+    <button class="btn editor-only" id="enew">➕ กิจกรรมใหม่</button>
+    <button class="btn ghost" id="eexport">⬇ Export CSV</button></div>
+    <div class="scroll"><table id="etable">
+      <tr><th>กิจกรรม</th><th>ร้าน/สาขา</th><th>ประเภท</th><th>ระดับ</th><th>วันที่</th><th>สถานะ</th>
+        <th class="num">Sell-out</th><th class="num">Lead</th><th class="num">Test</th><th class="num">Train</th><th></th></tr>
+      ${eventCache.length ? eventCache.map(e => {
+        const cell = (a, t) => `<td class="num" title="ผล/เป้า">${a||0}<small style="color:#98a2b3">/${t||0}</small></td>`;
+        return `<tr data-id="${e.id}">
+        <td><b>${esc(e.activity_name || '(ไม่มีชื่อ)')}</b><small class="sub">${esc(e.dept||'')}${e.owner?' · '+esc(e.owner):''}</small></td>
+        <td>${esc(e.dealer_name || e.company || '-')}<small class="sub">${esc(e.branch||e.province||'')}</small></td>
+        <td><span class="badge b-reuse">${EV_TYPE[e.type]||e.type||'-'}</span></td>
+        <td>${e.tier?`<span class="tierb tier-${e.tier}">${e.tier}</span>`:'-'}</td>
+        <td><small>${esc(e.start_date||e.event_date||'')}</small></td>
+        <td><span class="badge ${e.status==='done'?'b-avail':e.status==='cancelled'?'b-out':'b-reuse'}">${EV_STATUS[e.status]||e.status}</span></td>
+        ${cell(e.sales_units, e.target_sellout)}${cell(e.leads, e.target_lead)}${cell(e.test_ride, e.target_testride)}${cell(e.act_training, e.target_training)}
+        <td style="white-space:nowrap"><button class="btn sm f-edit">${currentUser.role==='viewer'?'ดู':'แก้ไข'}</button>
+          ${currentUser.role==='viewer'?'':'<button class="btn sm del danger f-del">ลบ</button>'}</td></tr>`;
+      }).join('') : '<tr><td colspan="11" class="muted">ยังไม่มีกิจกรรม — กด “กิจกรรมใหม่”</td></tr>'}
+    </table></div></div>`;
+  const enew = $('#enew');
+  if (enew) enew.addEventListener('click', () => openEventEditor(null));
   $('#eexport').addEventListener('click', () => exportCSV('events.csv',
-    [{key:'week',label:'สัปดาห์'},{key:'event_date',label:'วันที่'},{key:'dealer_code',label:'รหัส'},
-     {key:'dealer_name',label:'สาขา'},{key:'province',label:'จังหวัด'},{key:'type',label:'ประเภท'},{key:'tier',label:'ระดับ'},
-     {key:'status',label:'สถานะ'},{key:'budget',label:'งบ'},{key:'leads',label:'Lead'},{key:'test_ride',label:'TestRide'},{key:'sales_units',label:'ขาย(คัน)'}], eventCache));
-  $('#eadd').addEventListener('click', async () => {
-    const dealer_name = prompt('ชื่อสาขา:'); if (!dealer_name) return;
-    const province = prompt('จังหวัด:') || '';
-    const type = (prompt('ประเภทงาน (activation=กิจกรรมหน้าร้าน / training=อบรม / testride=ทดลองขับ):', 'activation') || 'activation').trim();
-    const tier = (prompt('ระดับร้าน (A / B):', 'A') || '').trim().toUpperCase();
-    const week = +(prompt('สัปดาห์ (1-12):') || 0);
-    const event_date = prompt('วันที่ (เช่น 5 ต.ค. 69):') || '';
-    await api('/api/events', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ dealer_name, province, week, event_date, type, tier, phase:'ขยายผล' }) });
-    toast('เพิ่ม Event แล้ว'); renderEvents();
-  });
-  drawEvents();
-}
-const EV_TYPE = { activation:'กิจกรรมหน้าร้าน', training:'อบรม', testride:'ทดลองขับ', other:'อื่นๆ' };
-function drawEvents() {
-  const st = ['planned','confirmed','done','cancelled'];
-  const stLabel = {planned:'วางแผน',confirmed:'ยืนยันแล้ว',done:'จัดเสร็จ',cancelled:'ยกเลิก'};
-  const types = Object.keys(EV_TYPE);
-  $('#etable').innerHTML =
-    `<tr><th>W</th><th>วันที่</th><th>สาขา</th><th>ประเภท</th><th>ระดับ</th><th>สถานะ</th>
-      <th class="num">Lead</th><th class="num">Test</th><th class="num">ขาย</th><th class="num">Conv.</th><th></th></tr>` +
-    eventCache.map(e => `<tr data-id="${e.id}">
-      <td>W${e.week}</td><td>${esc(e.event_date)}</td>
-      <td>${esc(e.dealer_name)}<small class="sub">${e.dealer_code||''} · ${esc(e.province)}</small></td>
-      <td><select class="cell f-type" style="width:120px">${types.map(t=>`<option value="${t}" ${(e.type||'activation')===t?'selected':''}>${EV_TYPE[t]}</option>`).join('')}</select></td>
-      <td><select class="cell f-tier" style="width:52px"><option value="" ${!e.tier?'selected':''}>-</option><option value="A" ${e.tier==='A'?'selected':''}>A</option><option value="B" ${e.tier==='B'?'selected':''}>B</option></select></td>
-      <td><select class="cell f-st" style="width:90px">${st.map(s=>`<option value="${s}" ${e.status===s?'selected':''}>${stLabel[s]}</option>`).join('')}</select></td>
-      <td class="num"><input class="cell f-lead" style="width:52px" type="number" min="0" value="${e.leads}"></td>
-      <td class="num"><input class="cell f-test" style="width:52px" type="number" min="0" value="${e.test_ride||0}"></td>
-      <td class="num"><input class="cell f-sales" style="width:52px" type="number" min="0" value="${e.sales_units}"></td>
-      <td class="num"><b>${e.leads?Math.round(100*e.sales_units/e.leads):0}%</b></td>
-      <td style="white-space:nowrap"><button class="btn sm f-save">บันทึก</button>
-        <button class="btn sm del danger f-del">ลบ</button></td></tr>`).join('');
-  $('#etable').querySelectorAll('.f-save').forEach(b => b.addEventListener('click', async e => {
-    const tr = e.target.closest('tr'); const id = tr.dataset.id;
-    const body = { status: tr.querySelector('.f-st').value, type: tr.querySelector('.f-type').value,
-      tier: tr.querySelector('.f-tier').value, leads: +tr.querySelector('.f-lead').value,
-      test_ride: +tr.querySelector('.f-test').value, sales_units: +tr.querySelector('.f-sales').value };
-    const upd = await api('/api/events/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    const i = eventCache.findIndex(x => x.id == id); eventCache[i] = upd;
-    toast('บันทึก Event แล้ว'); renderEvents();
-  }));
+    [{key:'activity_name',label:'กิจกรรม'},{key:'dept',label:'แผนก'},{key:'dealer_name',label:'ร้าน'},{key:'branch',label:'สาขา'},
+     {key:'type',label:'ประเภท'},{key:'tier',label:'ระดับ'},{key:'start_date',label:'เริ่ม'},{key:'end_date',label:'สิ้นสุด'},{key:'status',label:'สถานะ'},
+     {key:'budget',label:'งบ'},{key:'target_sellout',label:'เป้าSellout'},{key:'sales_units',label:'ผลSellout'},
+     {key:'target_lead',label:'เป้าLead'},{key:'leads',label:'ผลLead'},{key:'target_testride',label:'เป้าTest'},{key:'test_ride',label:'ผลTest'},
+     {key:'target_training',label:'เป้าTrain'},{key:'act_training',label:'ผลTrain'}], eventCache));
+  $('#etable').querySelectorAll('.f-edit').forEach(b => b.addEventListener('click', e =>
+    openEventEditor(eventCache.find(x => x.id == e.target.closest('tr').dataset.id))));
   $('#etable').querySelectorAll('.f-del').forEach(b => b.addEventListener('click', async e => {
     const id = e.target.closest('tr').dataset.id;
-    if (!confirm('ลบ Event นี้?')) return;
+    if (!confirm('ลบกิจกรรมนี้?')) return;
     await del('/api/events/' + id); toast('ลบแล้ว'); renderEvents();
   }));
 }
+
+let evBudget = [], evStock = [];
+function openEventEditor(ev) {
+  const readonly = currentUser.role === 'viewer';
+  ev = ev || {};
+  evBudget = Array.isArray(ev.budget_lines) ? [...ev.budget_lines] : [];
+  evStock = Array.isArray(ev.stock_prep) ? [...ev.stock_prep] : [];
+  const el = $('#events');
+  const opt = (arr, v) => arr.map(x => `<option value="${x}" ${v===x?'selected':''}>${x}</option>`).join('');
+  const dealerOpts = (dealerCache && dealerCache.length ? dealerCache : []).map(d => `<option value="${esc(d.code)}" ${ev.dealer_code===d.code?'selected':''}>${esc(d.name)} (${esc(d.code)})</option>`).join('');
+  const g = (id, label, val, type='text', ph='') => `<div class="fg"><label>${label}</label><input id="${id}" type="${type}" value="${esc(val??'')}" placeholder="${ph}" ${readonly?'disabled':''}></div>`;
+  const sel = (id, label, options, val) => `<div class="fg"><label>${label}</label><select id="${id}" ${readonly?'disabled':''}><option value="">-</option>${opt(options, val)}</select></div>`;
+  el.innerHTML = `
+  <div class="card"><div class="toolbar"><h2 style="margin:0">${ev.id?'✏️ แก้ไขกิจกรรม':'➕ กิจกรรมใหม่'}</h2><span class="spacer"></span>
+    <button class="btn ghost" id="ecancel">← กลับ</button>${readonly?'':'<button class="btn" id="esave">💾 บันทึก</button>'}</div>
+
+    <h3 class="sec">รายละเอียด</h3>
+    <div class="fgrid">
+      ${sel('e_dept','แผนกผู้ส่งคำขอ',EV_DEPT,ev.dept)}
+      ${g('e_activity','ชื่อกิจกรรม',ev.activity_name,'text','เช่น Test Ride Day @เชียงใหม่')}
+      <div class="fg"><label>ร้านค้า (Dealer)</label><select id="e_dealer" ${readonly?'disabled':''}><option value="">- เลือก -</option>${dealerOpts}</select></div>
+      ${g('e_company','ชื่อบริษัท',ev.company)}
+      ${g('e_branch','ชื่อสาขา',ev.branch)}
+      ${g('e_customer','ชื่อลูกค้า',ev.customer_name)}
+      ${g('e_phone','เบอร์โทรลูกค้า',ev.customer_phone)}
+    </div>
+
+    <h3 class="sec">เวลา & ประเภท</h3>
+    <div class="fgrid">
+      ${g('e_start','เวลาเริ่มต้น',ev.start_date,'date')}
+      ${g('e_end','เวลาสิ้นสุด',ev.end_date,'date')}
+      ${g('e_dur','ระยะเวลา (วัน)',ev.duration_days||1,'number')}
+      ${sel('e_type','ประเภทกิจกรรม',Object.keys(EV_TYPE).map(k=>k),ev.type)}
+      <div class="fg"><label>ระดับร้าน</label><select id="e_tier" ${readonly?'disabled':''}><option value="">-</option><option value="A" ${ev.tier==='A'?'selected':''}>A</option><option value="B" ${ev.tier==='B'?'selected':''}>B</option></select></div>
+      ${g('e_goal','เป้าหมายหลัก',ev.goal)}
+      ${sel('e_status','สถานะ',Object.keys(EV_STATUS),ev.status||'planned')}
+      ${g('e_owner','ผู้รับผิดชอบหลัก',ev.owner)}
+      ${g('e_support','ทีมสนับสนุน',ev.support_team)}
+    </div>
+
+    <h3 class="sec">🎯 เป้าหมาย vs ผลจริง</h3>
+    <div class="scroll"><table class="mini">
+      <tr><th></th><th class="num">Sell-out (คัน)</th><th class="num">Lead (ราย)</th><th class="num">Test Ride (คน)</th><th class="num">Training (คน)</th></tr>
+      <tr><td><b>เป้าหมาย</b></td>
+        <td><input id="t_sellout" type="number" value="${ev.target_sellout||0}" ${readonly?'disabled':''}></td>
+        <td><input id="t_lead" type="number" value="${ev.target_lead||0}" ${readonly?'disabled':''}></td>
+        <td><input id="t_test" type="number" value="${ev.target_testride||0}" ${readonly?'disabled':''}></td>
+        <td><input id="t_train" type="number" value="${ev.target_training||0}" ${readonly?'disabled':''}></td></tr>
+      <tr><td><b>ผลจริง</b></td>
+        <td><input id="a_sellout" type="number" value="${ev.sales_units||0}" ${readonly?'disabled':''}></td>
+        <td><input id="a_lead" type="number" value="${ev.leads||0}" ${readonly?'disabled':''}></td>
+        <td><input id="a_test" type="number" value="${ev.test_ride||0}" ${readonly?'disabled':''}></td>
+        <td><input id="a_train" type="number" value="${ev.act_training||0}" ${readonly?'disabled':''}></td></tr>
+    </table></div>
+
+    <h3 class="sec">💰 งบประมาณ</h3>
+    <div id="budgetBox"></div>
+    <div class="fgrid" style="margin-top:10px">${g('e_bank','ธนาคารสำหรับโอนเงิน',ev.bank)}${g('e_acct','บัญชีธนาคาร',ev.bank_account)}</div>
+
+    <h3 class="sec">📦 สต็อกที่เตรียมไว้</h3>
+    <div id="stockBox"></div>
+  </div>`;
+  drawBudget(readonly); drawStock(readonly);
+  $('#ecancel').addEventListener('click', renderEvents);
+  const save = $('#esave');
+  if (save) save.addEventListener('click', () => saveEvent(ev.id));
+}
+function drawBudget(readonly) {
+  const box = $('#budgetBox'); if (!box) return;
+  const total = evBudget.reduce((s, l) => s + (+l.amount || 0), 0);
+  box.innerHTML = `<table class="mini"><tr><th>ประเภท</th><th>จำนวนเงิน</th><th>หมายเหตุ</th><th></th></tr>
+    ${evBudget.map((l, i) => `<tr>
+      <td><input data-i="${i}" data-k="type" class="bl" value="${esc(l.type||'')}" ${readonly?'disabled':''}></td>
+      <td><input data-i="${i}" data-k="amount" class="bl" type="number" value="${l.amount||0}" ${readonly?'disabled':''}></td>
+      <td><input data-i="${i}" data-k="note" class="bl" value="${esc(l.note||'')}" ${readonly?'disabled':''}></td>
+      <td>${readonly?'':`<button class="btn sm del danger" data-del="${i}">ลบ</button>`}</td></tr>`).join('')}
+    <tr><td colspan="4">${readonly?'':'<button class="btn sm ghost" id="baddline">➕ เพิ่มรายการงบ</button>'} <b style="float:right">รวม: ${baht(total)} บาท</b></td></tr>
+  </table>`;
+  box.querySelectorAll('.bl').forEach(inp => inp.addEventListener('input', e => {
+    const { i, k } = e.target.dataset; evBudget[i][k] = e.target.value; if (k === 'amount') drawBudget(readonly);
+  }));
+  box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => { evBudget.splice(+e.target.dataset.del, 1); drawBudget(readonly); }));
+  const add = $('#baddline'); if (add) add.addEventListener('click', () => { evBudget.push({ type:'', amount:0, note:'' }); drawBudget(readonly); });
+}
+function drawStock(readonly) {
+  const box = $('#stockBox'); if (!box) return;
+  const modelOpt = v => eventProducts.map(m => `<option value="${m}" ${v===m?'selected':''}>${m}</option>`).join('');
+  box.innerHTML = `<table class="mini"><tr><th>สินค้า</th><th>สี</th><th>จำนวน (คัน)</th><th></th></tr>
+    ${evStock.map((s, i) => `<tr>
+      <td><select data-i="${i}" data-k="model" class="sl" ${readonly?'disabled':''}><option value="">-</option>${modelOpt(s.model)}</select></td>
+      <td><input data-i="${i}" data-k="color" class="sl" value="${esc(s.color||'')}" placeholder="สี" ${readonly?'disabled':''}></td>
+      <td><input data-i="${i}" data-k="qty" class="sl" type="number" value="${s.qty||0}" ${readonly?'disabled':''}></td>
+      <td>${readonly?'':`<button class="btn sm del danger" data-del="${i}">ลบ</button>`}</td></tr>`).join('')}
+    <tr><td colspan="4">${readonly?'':'<button class="btn sm ghost" id="saddline">➕ เพิ่มสต็อก</button>'}</td></tr>
+  </table>`;
+  box.querySelectorAll('.sl').forEach(inp => inp.addEventListener('input', e => { const { i, k } = e.target.dataset; evStock[i][k] = e.target.value; }));
+  box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => { evStock.splice(+e.target.dataset.del, 1); drawStock(readonly); }));
+  const add = $('#saddline'); if (add) add.addEventListener('click', () => { evStock.push({ model:'', color:'', qty:0 }); drawStock(readonly); });
+}
+async function saveEvent(id) {
+  const dcode = $('#e_dealer').value;
+  const dname = dcode && dealerCache ? (dealerCache.find(d => d.code === dcode)||{}).name : '';
+  const body = {
+    dept: $('#e_dept').value, activity_name: $('#e_activity').value,
+    dealer_code: dcode, dealer_name: dname, company: $('#e_company').value, branch: $('#e_branch').value,
+    customer_name: $('#e_customer').value, customer_phone: $('#e_phone').value,
+    start_date: $('#e_start').value, end_date: $('#e_end').value, duration_days: +$('#e_dur').value,
+    type: $('#e_type').value, tier: $('#e_tier').value, goal: $('#e_goal').value, status: $('#e_status').value,
+    owner: $('#e_owner').value, support_team: $('#e_support').value,
+    target_sellout:+$('#t_sellout').value, target_lead:+$('#t_lead').value, target_testride:+$('#t_test').value, target_training:+$('#t_train').value,
+    sales_units:+$('#a_sellout').value, leads:+$('#a_lead').value, test_ride:+$('#a_test').value, act_training:+$('#a_train').value,
+    bank: $('#e_bank').value, bank_account: $('#e_acct').value,
+    budget_lines: evBudget, stock_prep: evStock,
+  };
+  const d = id
+    ? await api('/api/events/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+    : await api('/api/events', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (d.id) { toast('บันทึกกิจกรรมแล้ว'); renderEvents(); }
+}
+
 
 // ================= POSM =================
 let posmCache = [];

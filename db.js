@@ -68,6 +68,20 @@ function init() {
   if (!ecols.includes('type')) db.exec("ALTER TABLE events ADD COLUMN type TEXT DEFAULT 'activation'");
   if (!ecols.includes('tier')) db.exec("ALTER TABLE events ADD COLUMN tier TEXT DEFAULT ''");
   if (!ecols.includes('test_ride')) db.exec('ALTER TABLE events ADD COLUMN test_ride INTEGER DEFAULT 0');
+  // events: Lark "กิจกรรม ARM" form fields + target/actual tracking
+  const eAdd = {
+    dept: "TEXT DEFAULT ''", activity_name: "TEXT DEFAULT ''", company: "TEXT DEFAULT ''",
+    branch: "TEXT DEFAULT ''", customer_name: "TEXT DEFAULT ''", customer_phone: "TEXT DEFAULT ''",
+    start_date: "TEXT DEFAULT ''", end_date: "TEXT DEFAULT ''", duration_days: "INTEGER DEFAULT 1",
+    goal: "TEXT DEFAULT ''", owner: "TEXT DEFAULT ''", support_team: "TEXT DEFAULT ''",
+    bank: "TEXT DEFAULT ''", bank_account: "TEXT DEFAULT ''",
+    budget_lines: "TEXT DEFAULT '[]'", stock_prep: "TEXT DEFAULT '[]'",
+    target_sellout: "INTEGER DEFAULT 0", target_lead: "INTEGER DEFAULT 0",
+    target_testride: "INTEGER DEFAULT 0", target_training: "INTEGER DEFAULT 0",
+    act_training: "INTEGER DEFAULT 0",
+  };
+  for (const [c, def] of Object.entries(eAdd))
+    if (!ecols.includes(c)) db.exec(`ALTER TABLE events ADD COLUMN ${c} ${def}`);
   // create a default admin on first run (persists across data reseeds)
   if (db.prepare('SELECT COUNT(*) c FROM users').get().c === 0) {
     const salt = crypto.randomBytes(16).toString('hex');

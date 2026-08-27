@@ -111,26 +111,55 @@ app.get('/api/products', (req, res) => {
 });
 
 // ---------- Events ----------
+const EVENT_FIELDS = ['dealer_code','dealer_name','province','week','event_date','phase','status','budget',
+  'leads','sales_units','type','tier','test_ride','dept','activity_name','company','branch','customer_name',
+  'customer_phone','start_date','end_date','duration_days','goal','owner','support_team','bank','bank_account',
+  'budget_lines','stock_prep','target_sellout','target_lead','target_testride','target_training','act_training'];
+const EVENT_JSON = ['budget_lines', 'stock_prep'];
+function eventRow(r) {
+  if (!r) return r;
+  EVENT_JSON.forEach(k => { try { r[k] = JSON.parse(r[k] || '[]'); } catch (_) { r[k] = []; } });
+  return r;
+}
+function normEventBody(b, base = {}) {
+  const out = {};
+  for (const f of EVENT_FIELDS) {
+    let v = (b[f] !== undefined) ? b[f] : base[f];
+    if (EVENT_JSON.includes(f)) v = JSON.stringify(Array.isArray(v) ? v : (typeof v === 'string' ? (JSON.parse(v || '[]')) : []));
+    out[f] = v ?? (EVENT_JSON.includes(f) ? '[]' : '');
+  }
+  // budget total from lines if provided
+  const lines = JSON.parse(out.budget_lines || '[]');
+  if (lines.length) out.budget = lines.reduce((s, l) => s + (+l.amount || 0), 0);
+  return out;
+}
 app.get('/api/events', (req, res) => {
-  res.json(db.prepare('SELECT * FROM events ORDER BY week, id').all());
+  res.json(db.prepare('SELECT * FROM events ORDER BY start_date DESC, week, id').all().map(eventRow));
+});
+app.get('/api/events/:id', (req, res) => {
+  const r = db.prepare('SELECT * FROM events WHERE id=?').get(req.params.id);
+  if (!r) return res.status(404).json({ error: 'not found' });
+  res.json(eventRow(r));
 });
 app.put('/api/events/:id', (req, res) => {
-  const { status, leads, sales_units, event_date, test_ride, type, tier } = req.body;
   const cur = db.prepare('SELECT * FROM events WHERE id=?').get(req.params.id);
   if (!cur) return res.status(404).json({ error: 'not found' });
-  db.prepare('UPDATE events SET status=?, leads=?, sales_units=?, event_date=?, test_ride=?, type=?, tier=? WHERE id=?')
-    .run(status ?? cur.status, leads ?? cur.leads, sales_units ?? cur.sales_units, event_date ?? cur.event_date,
-         test_ride ?? cur.test_ride, type ?? cur.type, tier ?? cur.tier, req.params.id);
-  res.json(db.prepare('SELECT * FROM events WHERE id=?').get(req.params.id));
+  const row = normEventBody(req.body, cur);
+  const sets = EVENT_FIELDS.map(f => `${f}=@${f}`).join(', ');
+  db.prepare(`UPDATE events SET ${sets} WHERE id=@id`).run({ ...row, id: cur.id });
+  res.json(eventRow(db.prepare('SELECT * FROM events WHERE id=?').get(cur.id)));
 });
 app.post('/api/events', (req, res) => {
-  const b = req.body;
   const nextId = (db.prepare('SELECT MAX(id) m FROM events').get().m || 0) + 1;
-  db.prepare(`INSERT INTO events (id,dealer_code,dealer_name,province,week,event_date,phase,status,budget,leads,sales_units,type,tier,test_ride)
-    VALUES (?,?,?,?,?,?,?,?,?,0,0,?,?,0)`).run(nextId, b.dealer_code||'', b.dealer_name||'', b.province||'',
-    b.week||0, b.event_date||'', b.phase||'ขยายผล', b.status||'planned', b.budget||20000,
-    b.type||'activation', b.tier||'');
-  res.json(db.prepare('SELECT * FROM events WHERE id=?').get(nextId));
+  const b = req.body || {};
+  if (b.phase === undefined) b.phase = 'ขยายผล';
+  if (b.status === undefined) b.status = 'planned';
+  if (b.type === undefined) b.type = 'activation';
+  if (b.duration_days === undefined) b.duration_days = 1;
+  const row = normEventBody(b);
+  const cols = EVENT_FIELDS.join(','), vals = EVENT_FIELDS.map(f => '@' + f).join(',');
+  db.prepare(`INSERT INTO events (id,${cols}) VALUES (@id,${vals})`).run({ ...row, id: nextId });
+  res.json(eventRow(db.prepare('SELECT * FROM events WHERE id=?').get(nextId)));
 });
 app.delete('/api/events/:id', (req, res) => {
   db.prepare('DELETE FROM events WHERE id=?').run(req.params.id);
