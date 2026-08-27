@@ -42,6 +42,12 @@ function init() {
     CREATE TABLE IF NOT EXISTS sessions (
       token TEXT PRIMARY KEY, username TEXT, expires INTEGER
     );
+    CREATE TABLE IF NOT EXISTS sellout (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dealer_code TEXT, dealer_name TEXT, ym TEXT, model TEXT,
+      sold INTEGER DEFAULT 0, stock INTEGER DEFAULT 0, note TEXT, updated_at TEXT,
+      UNIQUE(dealer_code, ym, model)
+    );
   `);
   // migrate older DBs that predate the new posm columns
   const cols = db.prepare("PRAGMA table_info(posm)").all().map(c => c.name);

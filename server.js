@@ -255,5 +255,40 @@ app.post('/api/password', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Sell-out & Stock ----------
+app.get('/api/sellout', (req, res) => {
+  const { month, dealer } = req.query;
+  let sql = 'SELECT * FROM sellout WHERE 1=1', args = [];
+  if (month) { sql += ' AND ym=?'; args.push(month); }
+  if (dealer) { sql += ' AND dealer_code=?'; args.push(dealer); }
+  sql += ' ORDER BY ym DESC, dealer_name, model';
+  res.json(db.prepare(sql).all(...args));
+});
+app.get('/api/sellout/summary', (req, res) => {
+  const month = req.query.month;
+  const where = month ? 'WHERE ym=?' : '';
+  const args = month ? [month] : [];
+  const tot = db.prepare(`SELECT SUM(sold) sold, SUM(stock) stock, COUNT(DISTINCT dealer_code) dealers FROM sellout ${where}`).get(...args);
+  const byModel = db.prepare(`SELECT model, SUM(sold) sold, SUM(stock) stock FROM sellout ${where} GROUP BY model ORDER BY sold DESC`).all(...args);
+  const months = db.prepare('SELECT DISTINCT ym FROM sellout ORDER BY ym DESC').all().map(r => r.ym);
+  const byMonth = db.prepare('SELECT ym, SUM(sold) sold FROM sellout GROUP BY ym ORDER BY ym').all();
+  res.json({ tot, byModel, months, byMonth });
+});
+app.post('/api/sellout', (req, res) => {
+  const b = req.body || {};
+  if (!b.dealer_code || !b.ym || !b.model) return res.status(400).json({ error: 'ต้องมี dealer, เดือน, รุ่น' });
+  const d = db.prepare('SELECT name FROM dealers WHERE code=?').get(b.dealer_code);
+  db.prepare(`INSERT INTO sellout (dealer_code,dealer_name,ym,model,sold,stock,note,updated_at)
+    VALUES (@dealer_code,@dealer_name,@ym,@model,@sold,@stock,@note,@updated_at)
+    ON CONFLICT(dealer_code,ym,model) DO UPDATE SET sold=@sold, stock=@stock, note=@note, updated_at=@updated_at`)
+    .run({ dealer_code: b.dealer_code, dealer_name: (d && d.name) || b.dealer_code, ym: b.ym, model: b.model,
+      sold: +b.sold || 0, stock: +b.stock || 0, note: b.note || '', updated_at: new Date().toISOString() });
+  res.json(db.prepare('SELECT * FROM sellout WHERE dealer_code=? AND ym=? AND model=?').get(b.dealer_code, b.ym, b.model));
+});
+app.delete('/api/sellout/:id', (req, res) => {
+  db.prepare('DELETE FROM sellout WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 const PORT = process.env.PORT || 4173;
 app.listen(PORT, () => console.log(`Ofero TMM system running at http://localhost:${PORT}`));

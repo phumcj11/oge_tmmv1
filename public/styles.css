@@ -16,6 +16,12 @@ body.role-viewer #dadd, body.role-viewer #eadd, body.role-viewer #padd,
 body.role-viewer .f-del, body.role-viewer .f-save, body.role-viewer .b-checkout,
 body.role-viewer .b-return{display:none!important}
 body.role-viewer .cell{pointer-events:none;background:#f4f4f4;color:#888}
+body.role-viewer .editor-only{display:none!important}
+.soform{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.soform>div{display:flex;flex-direction:column}
+.soform label{font-size:12px;color:#667085;margin-bottom:4px}
+.soform select,.soform input{padding:8px 10px;border:1px solid #cfd6e0;border-radius:8px;font-family:inherit;font-size:13px}
+.soform .grow{flex:1;min-width:160px} .soform .grow input{width:100%}
 main{max-width:1200px;margin:0 auto;padding:20px}
 .view.hidden{display:none}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}

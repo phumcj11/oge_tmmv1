@@ -377,7 +377,75 @@ function render(t) {
   else if (t === 'dealers') renderDealers();
   else if (t === 'events') renderEvents();
   else if (t === 'posm') renderPosm();
+  else if (t === 'sellout') renderSellout();
   else if (t === 'users') renderUsers();
+}
+
+// ================= SELL-OUT & STOCK =================
+let selloutMonth = null;
+async function renderSellout() {
+  const el = $('#sellout');
+  const [dealers, ov, allSum] = await Promise.all([api('/api/dealers'), api('/api/overview'), api('/api/sellout/summary')]);
+  const models = ov.products.map(p => p.model);
+  if (!selloutMonth) selloutMonth = (allSum.months && allSum.months[0]) || new Date().toISOString().slice(0, 7);
+  const [sum, rows] = await Promise.all([api('/api/sellout/summary?month=' + selloutMonth), api('/api/sellout?month=' + selloutMonth)]);
+  const t = sum.tot || {};
+  const dealerOpts = dealers.map(d => `<option value="${esc(d.code)}">${esc(d.name)} (${esc(d.code)})</option>`).join('');
+  const modelOpts = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  const modelBars = sum.byModel && sum.byModel.length
+    ? bars(sum.byModel.map(m => ({ label: m.model, v: m.sold || 0, color: '#00897B' })), i => i.v, v => v.toLocaleString() + ' คัน')
+    : '<div class="muted">ยังไม่มีข้อมูลเดือนนี้</div>';
+  el.innerHTML = `
+  <div class="toolbar" style="margin-bottom:14px">
+    <b>เดือน:</b> <input type="month" id="soMonth" value="${selloutMonth}">
+    <span class="muted">Sell-out = จำนวนที่ Dealer ขายออกให้ลูกค้าจริง · Stock = คงเหลือที่ร้าน</span>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="l">ขายออกเดือนนี้</div><div class="v" style="color:#00897B">${(t.sold||0).toLocaleString()}</div><div class="s">คัน</div></div>
+    <div class="kpi"><div class="l">สต็อกคงเหลือรวม</div><div class="v" style="color:#ef6c00">${(t.stock||0).toLocaleString()}</div><div class="s">คัน (ที่ Dealer)</div></div>
+    <div class="kpi"><div class="l">Dealer ที่รายงาน</div><div class="v">${t.dealers||0}</div><div class="s">ราย</div></div>
+  </div>
+  <div class="card editor-only"><h2>➕ บันทึก Sell-out / สต็อก</h2>
+    <div class="soform">
+      <div><label>Dealer</label><select id="soDealer">${dealerOpts}</select></div>
+      <div><label>รุ่นสินค้า</label><select id="soModel">${modelOpts}</select></div>
+      <div><label>ขายออก (คัน)</label><input id="soSold" type="number" min="0" value="0"></div>
+      <div><label>สต็อกคงเหลือ (คัน)</label><input id="soStock" type="number" min="0" value="0"></div>
+      <div class="grow"><label>หมายเหตุ</label><input id="soNote" placeholder="(ถ้ามี)"></div>
+      <div><label>&nbsp;</label><button class="btn" id="soSave">บันทึก</button></div>
+    </div>
+    <div class="muted" style="margin-top:6px">* บันทึกซ้ำ Dealer+รุ่น+เดือนเดิม = อัปเดตทับ</div>
+  </div>
+  <div class="card"><div class="toolbar"><h2 style="margin:0">📦 ขายออกตามรุ่น (เดือน ${selloutMonth})</h2></div>${modelBars}</div>
+  <div class="card"><div class="toolbar"><h2 style="margin:0">รายการที่บันทึก (${rows.length})</h2><span class="spacer"></span>
+    <button class="btn ghost" id="soExport">⬇ Export CSV</button></div>
+    <div class="scroll"><table id="soTable">
+      <tr><th>Dealer</th><th>รุ่น</th><th class="num">ขายออก</th><th class="num">สต็อก</th><th>หมายเหตุ</th><th>อัปเดต</th><th></th></tr>
+      ${rows.length ? rows.map(r => `<tr data-id="${r.id}">
+        <td>${esc(r.dealer_name)}<small class="sub">${esc(r.dealer_code)}</small></td>
+        <td>${esc(r.model)}</td><td class="num">${(r.sold||0).toLocaleString()}</td>
+        <td class="num">${(r.stock||0).toLocaleString()}</td><td>${esc(r.note)||'-'}</td>
+        <td><small class="sub">${esc((r.updated_at||'').slice(0,10))}</small></td>
+        <td><button class="btn sm del danger f-del">ลบ</button></td></tr>`).join('')
+      : '<tr><td colspan="7" class="muted">ยังไม่มีข้อมูลเดือนนี้ — เพิ่มด้านบน</td></tr>'}
+    </table></div></div>`;
+  $('#soMonth').addEventListener('change', e => { selloutMonth = e.target.value; renderSellout(); });
+  $('#soExport').addEventListener('click', () => exportCSV('sellout_' + selloutMonth + '.csv',
+    [{key:'dealer_code',label:'รหัส'},{key:'dealer_name',label:'Dealer'},{key:'ym',label:'เดือน'},
+     {key:'model',label:'รุ่น'},{key:'sold',label:'ขายออก'},{key:'stock',label:'สต็อก'},{key:'note',label:'หมายเหตุ'}], rows));
+  const save = $('#soSave');
+  if (save) save.addEventListener('click', async () => {
+    const body = { dealer_code: $('#soDealer').value, model: $('#soModel').value, ym: selloutMonth,
+      sold: +$('#soSold').value, stock: +$('#soStock').value, note: $('#soNote').value };
+    const d = await api('/api/sellout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (d.id) { toast('บันทึกแล้ว'); renderSellout(); }
+  });
+  el.querySelectorAll('.f-del').forEach(b => b.addEventListener('click', async e => {
+    const id = e.target.closest('tr').dataset.id;
+    if (!confirm('ลบรายการนี้?')) return;
+    const d = await del('/api/sellout/' + id);
+    if (d.ok) { toast('ลบแล้ว'); renderSellout(); }
+  }));
 }
 
 // ================= AUTH / USER =================
