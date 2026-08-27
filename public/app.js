@@ -422,6 +422,18 @@ async function openDealer360(code) {
           ${ro?'':'<button class="btn sm" id="d3save" style="margin-top:10px">💾 บันทึกโปรไฟล์</button>'}
         </div>
       </div>
+      <div class="d3sec"><h4>📍 ตำแหน่งบนแผนที่ ${ro?'':'<button class="btn sm" id="d3locsave">💾 บันทึกพิกัด</button>'}
+        <span class="muted" id="d3coord" style="font-weight:400"></span></h4>
+        <div class="d3loc">
+          <div id="d3map"></div>
+          <div class="d3loc-side">
+            ${ro?'':`<div class="fg"><label>วางลิงก์ Google Maps หรือพิกัด (lat, lon)</label>
+              <input id="d3paste" placeholder="เช่น 13.756, 100.501 หรือ https://maps.google.com/...@13.7,100.5"></div>
+            <button class="btn sm ghost" id="d3parse">📌 ดึงพิกัดจากลิงก์/ข้อความ</button>
+            <div class="muted" style="font-size:12px;margin-top:10px;line-height:1.6">• ลากหมุดบนแผนที่เพื่อปรับตำแหน่ง<br>• หรือคลิกบนแผนที่เพื่อวางหมุด<br>• ลิงก์ย่อ (goo.gl/maps) ใช้ไม่ได้ ให้เปิดลิงก์แล้ว copy พิกัดจาก URL เต็ม</div>`}
+          </div>
+        </div>
+      </div>
     </div></div>`;
   document.body.appendChild(bg);
   const close = () => bg.remove();
@@ -438,6 +450,47 @@ async function openDealer360(code) {
     setTimeout(() => openEventEditor({ dealer_code: d.code, dealer_name: d.name, province: d.province, tier: d.tier }), 350); });
   $('#d3so')?.addEventListener('click', () => goTab('sellout'));
   $('#d3au')?.addEventListener('click', () => goTab('audit'));
+  // ---- location editor (mini map + draggable marker + paste link) ----
+  if (typeof L !== 'undefined') {
+    let mLat = d.lat, mLon = d.lon;
+    const has = mLat && mLon;
+    L.Icon.Default.imagePath = 'vendor/leaflet/images/';
+    const start = has ? [mLat, mLon] : [13.7, 100.5];
+    const dmap = L.map('d3map', { scrollWheelZoom: false }).setView(start, has ? 15 : 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(dmap);
+    const marker = L.marker(start, { draggable: !ro }).addTo(dmap);
+    const setCoord = (lat, lon) => { mLat = lat; mLon = lon; $('#d3coord').textContent = '· ' + lat.toFixed(6) + ', ' + lon.toFixed(6); };
+    if (has) setCoord(mLat, mLon); else $('#d3coord').textContent = '· ยังไม่มีพิกัด — ลากหมุดหรือวางลิงก์เพื่อกำหนด';
+    marker.on('dragend', () => { const p = marker.getLatLng(); setCoord(p.lat, p.lng); });
+    if (!ro) dmap.on('click', e => { marker.setLatLng(e.latlng); setCoord(e.latlng.lat, e.latlng.lng); });
+    setTimeout(() => dmap.invalidateSize(), 250);
+    $('#d3parse')?.addEventListener('click', () => {
+      const c = parseLatLon($('#d3paste').value);
+      if (!c) return toast('อ่านพิกัดไม่ได้ — ต้องเป็น lat,lon หรือ URL ที่มีพิกัด');
+      marker.setLatLng(c); dmap.setView(c, 16); setCoord(c[0], c[1]);
+    });
+    $('#d3locsave')?.addEventListener('click', async () => {
+      if (mLat == null || mLon == null) return toast('ยังไม่มีพิกัด');
+      await api('/api/dealers/' + code, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat: mLat, lon: mLon }) });
+      const i = dealerCache.findIndex(x => x.code === code); if (i >= 0) { dealerCache[i].lat = mLat; dealerCache[i].lon = mLon; }
+      toast('บันทึกพิกัดแล้ว ✓');
+    });
+  }
+}
+// parse "lat, lon" or a Google Maps URL/text → [lat, lon] (Thailand-bounded sanity check)
+function parseLatLon(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  const ok = (la, lo) => (la >= 5 && la <= 21 && lo >= 96 && lo <= 106) ? [la, lo] : null;
+  const pats = [
+    /^(-?\d{1,2}\.\d+)\s*,\s*(\d{1,3}\.\d+)$/,   // "13.75, 100.5"
+    /!3d(-?\d{1,2}\.\d+)!4d(\d{1,3}\.\d+)/,        // place URL !3d..!4d.. (exact pin — wins over @)
+    /@(-?\d{1,2}\.\d+),(\d{1,3}\.\d+)/,            // .../@13.75,100.5,15z (viewport center)
+    /[?&](?:q|query|ll)=(-?\d{1,2}\.\d+),(\d{1,3}\.\d+)/, // ?q=13.75,100.5
+    /(-?\d{1,2}\.\d{3,}),\s*(\d{1,3}\.\d{3,})/,    // generic fallback
+  ];
+  for (const p of pats) { const m = s.match(p); if (m) { const r = ok(+m[1], +m[2]); if (r) return r; } }
+  return null;
 }
 
 // ================= EVENTS (aligned to Lark "กิจกรรม ARM" form) =================

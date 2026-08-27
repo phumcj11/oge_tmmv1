@@ -119,9 +119,11 @@ app.put('/api/dealers/:code', (req, res) => {
   const cur = db.prepare('SELECT * FROM dealers WHERE code=?').get(req.params.code);
   if (!cur) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
-  db.prepare('UPDATE dealers SET phone=?, line=?, tier=?, sales_rep=?, credit=? WHERE code=?')
+  const lat = b.lat !== undefined ? (b.lat === null ? null : +b.lat) : cur.lat;
+  const lon = b.lon !== undefined ? (b.lon === null ? null : +b.lon) : cur.lon;
+  db.prepare('UPDATE dealers SET phone=?, line=?, tier=?, sales_rep=?, credit=?, lat=?, lon=? WHERE code=?')
     .run(b.phone ?? cur.phone, b.line ?? cur.line, b.tier ?? cur.tier,
-         b.sales_rep ?? cur.sales_rep, b.credit ?? cur.credit, req.params.code);
+         b.sales_rep ?? cur.sales_rep, b.credit ?? cur.credit, lat, lon, req.params.code);
   res.json(db.prepare('SELECT * FROM dealers WHERE code=?').get(req.params.code));
 });
 // Dealer 360° — aggregate everything about one dealer

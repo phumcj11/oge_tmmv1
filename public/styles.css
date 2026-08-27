@@ -330,3 +330,11 @@ th{background:#fafbfc;letter-spacing:.2px}
 .mp-grid b{font-size:12.5px}
 .mp-act{display:flex;gap:6px;margin-top:6px}
 .mp-act .btn{flex:1;text-align:center;text-decoration:none}
+
+/* ---- dealer 360 location editor ---- */
+.d3loc{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-top:8px}
+#d3map{height:240px;border-radius:10px;overflow:hidden;background:#eef1ec;z-index:0}
+.d3loc-side{display:flex;flex-direction:column}
+.d3loc-side .fg{margin-bottom:8px}
+#d3coord{font-size:12px}
+@media(max-width:640px){.d3loc{grid-template-columns:1fr}#d3map{height:200px}}
