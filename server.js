@@ -114,8 +114,8 @@ app.get('/api/products', (req, res) => {
 const EVENT_FIELDS = ['dealer_code','dealer_name','province','week','event_date','phase','status','budget',
   'leads','sales_units','type','tier','test_ride','dept','activity_name','company','branch','customer_name',
   'customer_phone','start_date','end_date','duration_days','goal','owner','support_team','bank','bank_account',
-  'budget_lines','stock_prep','target_sellout','target_lead','target_testride','target_training','act_training'];
-const EVENT_JSON = ['budget_lines', 'stock_prep'];
+  'budget_lines','stock_prep','action_plan','manpower','target_sellout','target_lead','target_testride','target_training','act_training'];
+const EVENT_JSON = ['budget_lines', 'stock_prep', 'action_plan', 'manpower'];
 function eventRow(r) {
   if (!r) return r;
   EVENT_JSON.forEach(k => { try { r[k] = JSON.parse(r[k] || '[]'); } catch (_) { r[k] = []; } });

@@ -76,6 +76,7 @@ function init() {
     goal: "TEXT DEFAULT ''", owner: "TEXT DEFAULT ''", support_team: "TEXT DEFAULT ''",
     bank: "TEXT DEFAULT ''", bank_account: "TEXT DEFAULT ''",
     budget_lines: "TEXT DEFAULT '[]'", stock_prep: "TEXT DEFAULT '[]'",
+    action_plan: "TEXT DEFAULT '[]'", manpower: "TEXT DEFAULT '[]'",
     target_sellout: "INTEGER DEFAULT 0", target_lead: "INTEGER DEFAULT 0",
     target_testride: "INTEGER DEFAULT 0", target_training: "INTEGER DEFAULT 0",
     act_training: "INTEGER DEFAULT 0",

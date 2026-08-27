@@ -202,7 +202,7 @@ async function renderEvents() {
       ${eventCache.length ? eventCache.map(e => {
         const cell = (a, t) => `<td class="num" title="ผล/เป้า">${a||0}<small style="color:#98a2b3">/${t||0}</small></td>`;
         return `<tr data-id="${e.id}">
-        <td><b>${esc(e.activity_name || '(ไม่มีชื่อ)')}</b><small class="sub">${esc(e.dept||'')}${e.owner?' · '+esc(e.owner):''}</small></td>
+        <td><b class="lnk f-edit" style="color:#1565C0;cursor:pointer">${esc(e.activity_name || '(ไม่มีชื่อ)')}</b><small class="sub">${esc(e.dept||'')}${e.owner?' · '+esc(e.owner):''}</small></td>
         <td>${esc(e.dealer_name || e.company || '-')}<small class="sub">${esc(e.branch||e.province||'')}</small></td>
         <td><span class="badge b-reuse">${EV_TYPE[e.type]||e.type||'-'}</span></td>
         <td>${e.tier?`<span class="tierb tier-${e.tier}">${e.tier}</span>`:'-'}</td>
@@ -268,12 +268,14 @@ function wireCalendar() {
     }));
 }
 
-let evBudget = [], evStock = [];
+let evBudget = [], evStock = [], evAction = [], evManpower = [];
 function openEventEditor(ev) {
   const readonly = currentUser.role === 'viewer';
   ev = ev || {};
   evBudget = Array.isArray(ev.budget_lines) ? [...ev.budget_lines] : [];
   evStock = Array.isArray(ev.stock_prep) ? [...ev.stock_prep] : [];
+  evAction = Array.isArray(ev.action_plan) ? ev.action_plan.map(x => ({...x})) : [];
+  evManpower = Array.isArray(ev.manpower) ? ev.manpower.map(x => ({...x})) : [];
   const el = $('#events');
   const opt = (arr, v) => arr.map(x => `<option value="${x}" ${v===x?'selected':''}>${x}</option>`).join('');
   const dealerOpts = (dealerCache && dealerCache.length ? dealerCache : []).map(d => `<option value="${esc(d.code)}" ${ev.dealer_code===d.code?'selected':''}>${esc(d.name)} (${esc(d.code)})</option>`).join('');
@@ -328,8 +330,14 @@ function openEventEditor(ev) {
 
     <h3 class="sec">📦 สต็อกที่เตรียมไว้</h3>
     <div id="stockBox"></div>
+
+    <h3 class="sec">📋 Action Plan (แผนงาน / เช็กลิสต์)</h3>
+    <div id="actionBox"></div>
+
+    <h3 class="sec">👥 Manpower (ทีมงาน)</h3>
+    <div id="manpowerBox"></div>
   </div>`;
-  drawBudget(readonly); drawStock(readonly);
+  drawBudget(readonly); drawStock(readonly); drawAction(readonly); drawManpower(readonly);
   $('#ecancel').addEventListener('click', renderEvents);
   const save = $('#esave');
   if (save) save.addEventListener('click', () => saveEvent(ev.id));
@@ -366,6 +374,60 @@ function drawStock(readonly) {
   box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => { evStock.splice(+e.target.dataset.del, 1); drawStock(readonly); }));
   const add = $('#saddline'); if (add) add.addEventListener('click', () => { evStock.push({ model:'', color:'', qty:0 }); drawStock(readonly); });
 }
+const AP_PHASE = ['ก่อนงาน', 'วันงาน', 'หลังงาน'];
+const AP_TEMPLATE = [
+  ['ก่อนงาน','ยืนยันสาขา วันเวลา และขออนุญาตพื้นที่'], ['ก่อนงาน','ผลิต + จัดส่ง POSM ถึงสาขา'],
+  ['ก่อนงาน','เตรียมรถ Demo (แบตเต็ม/เบรกปกติ)'], ['ก่อนงาน','ล็อกทีมหน้างาน + เครื่องเสียง'],
+  ['ก่อนงาน','โปรโมทล่วงหน้า + เปิดจองคิวทดลองขับ'], ['ก่อนงาน','เตรียมของแถม/ใบลงทะเบียน/คูปอง'],
+  ['วันงาน','ติดตั้ง POSM + ถ่ายรูปหน้างาน'], ['วันงาน','เปิดลงทะเบียน & ทดลองขับตามกติกาความปลอดภัย'],
+  ['วันงาน','เก็บ Lead ครบทุกราย'], ['วันงาน','ปิดการขาย / รับจองในงาน'],
+  ['หลังงาน','ตรวจนับ + คืน POSM เข้าคลัง'], ['หลังงาน','ส่ง Lead ให้เซลล์ติดตามภายใน 3 วัน'],
+  ['หลังงาน','สรุปผล KPI + ค่าใช้จ่ายจริง'], ['หลังงาน','ถอดบทเรียนก่อนขยายสาขาถัดไป'],
+];
+const MP_TEMPLATE = [
+  ['ผู้จัดการโครงการ','','','วางแผน คุมงบ ประสานงาน สรุปผล'],
+  ['ตัวแทนสาขา/Dealer','','','เจ้าภาพพื้นที่ จัดรถสาธิต ทีมขาย'],
+  ['MC / พริตตี้','','','เรียกคน ดำเนินกิจกรรม ชวนทดลองขับ'],
+  ['ช่างเทคนิค','','','ดูแลรถทดลองขับ + ความปลอดภัย'],
+  ['เจ้าหน้าที่ลงทะเบียน','','','เก็บ Lead แจกของ คุมคิว'],
+];
+function drawAction(readonly) {
+  const box = $('#actionBox'); if (!box) return;
+  const done = evAction.filter(a => a.done).length;
+  box.innerHTML = `<table class="mini"><tr><th style="width:110px">ช่วง</th><th>งาน</th><th style="width:120px">ผู้รับผิดชอบ</th><th style="width:70px">เสร็จ</th><th></th></tr>
+    ${evAction.map((a, i) => `<tr>
+      <td><select data-i="${i}" data-k="phase" class="ap" ${readonly?'disabled':''}>${AP_PHASE.map(p=>`<option ${a.phase===p?'selected':''}>${p}</option>`).join('')}</select></td>
+      <td><input data-i="${i}" data-k="task" class="ap" value="${esc(a.task||'')}" ${readonly?'disabled':''}></td>
+      <td><input data-i="${i}" data-k="owner" class="ap" value="${esc(a.owner||'')}" ${readonly?'disabled':''}></td>
+      <td style="text-align:center"><input type="checkbox" data-i="${i}" data-k="done" class="ap" ${a.done?'checked':''} ${readonly?'disabled':''}></td>
+      <td>${readonly?'':`<button class="btn sm del danger" data-del="${i}">ลบ</button>`}</td></tr>`).join('')}
+    <tr><td colspan="5">${readonly?'':'<button class="btn sm ghost" id="apadd">➕ เพิ่มงาน</button> <button class="btn sm ghost" id="aptmpl">📥 โหลด template</button>'}
+      <b style="float:right">เสร็จ ${done}/${evAction.length} (${evAction.length?Math.round(100*done/evAction.length):0}%)</b></td></tr>
+  </table>`;
+  box.querySelectorAll('.ap').forEach(inp => inp.addEventListener('input', e => {
+    const { i, k } = e.target.dataset; evAction[i][k] = k === 'done' ? e.target.checked : e.target.value;
+    if (k === 'done') drawAction(readonly);
+  }));
+  box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => { evAction.splice(+e.target.dataset.del, 1); drawAction(readonly); }));
+  $('#apadd')?.addEventListener('click', () => { evAction.push({ phase:'ก่อนงาน', task:'', owner:'', done:false }); drawAction(readonly); });
+  $('#aptmpl')?.addEventListener('click', () => { if (!evAction.length || confirm('เพิ่ม template เข้าไปในรายการ?')) { AP_TEMPLATE.forEach(([ph,t]) => evAction.push({ phase:ph, task:t, owner:'', done:false })); drawAction(readonly); } });
+}
+function drawManpower(readonly) {
+  const box = $('#manpowerBox'); if (!box) return;
+  box.innerHTML = `<table class="mini"><tr><th style="width:150px">บทบาท</th><th>ชื่อ</th><th style="width:120px">เบอร์/ไลน์</th><th>หน้าที่</th><th></th></tr>
+    ${evManpower.map((m, i) => `<tr>
+      <td><input data-i="${i}" data-k="role" class="mp" value="${esc(m.role||'')}" ${readonly?'disabled':''}></td>
+      <td><input data-i="${i}" data-k="name" class="mp" value="${esc(m.name||'')}" ${readonly?'disabled':''}></td>
+      <td><input data-i="${i}" data-k="phone" class="mp" value="${esc(m.phone||'')}" ${readonly?'disabled':''}></td>
+      <td><input data-i="${i}" data-k="note" class="mp" value="${esc(m.note||'')}" ${readonly?'disabled':''}></td>
+      <td>${readonly?'':`<button class="btn sm del danger" data-del="${i}">ลบ</button>`}</td></tr>`).join('')}
+    <tr><td colspan="5">${readonly?'':'<button class="btn sm ghost" id="mpadd">➕ เพิ่มคน</button> <button class="btn sm ghost" id="mptmpl">📥 โหลด template</button>'}</td></tr>
+  </table>`;
+  box.querySelectorAll('.mp').forEach(inp => inp.addEventListener('input', e => { const { i, k } = e.target.dataset; evManpower[i][k] = e.target.value; }));
+  box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => { evManpower.splice(+e.target.dataset.del, 1); drawManpower(readonly); }));
+  $('#mpadd')?.addEventListener('click', () => { evManpower.push({ role:'', name:'', phone:'', note:'' }); drawManpower(readonly); });
+  $('#mptmpl')?.addEventListener('click', () => { if (!evManpower.length || confirm('เพิ่ม template เข้าไป?')) { MP_TEMPLATE.forEach(([r,n,p,nt]) => evManpower.push({ role:r, name:n, phone:p, note:nt })); drawManpower(readonly); } });
+}
 async function saveEvent(id) {
   const dcode = $('#e_dealer').value;
   const dname = dcode && dealerCache ? (dealerCache.find(d => d.code === dcode)||{}).name : '';
@@ -379,7 +441,7 @@ async function saveEvent(id) {
     target_sellout:+$('#t_sellout').value, target_lead:+$('#t_lead').value, target_testride:+$('#t_test').value, target_training:+$('#t_train').value,
     sales_units:+$('#a_sellout').value, leads:+$('#a_lead').value, test_ride:+$('#a_test').value, act_training:+$('#a_train').value,
     bank: $('#e_bank').value, bank_account: $('#e_acct').value,
-    budget_lines: evBudget, stock_prep: evStock,
+    budget_lines: evBudget, stock_prep: evStock, action_plan: evAction, manpower: evManpower,
   };
   const d = id
     ? await api('/api/events/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
