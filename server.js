@@ -2,7 +2,18 @@
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const db = require('./db');
+
+// ---------- file uploads ----------
+const uploadsDir = path.join(__dirname, 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+const storage = multer.diskStorage({
+  destination: uploadsDir,
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + Math.round(Math.random() * 1e6) + path.extname(file.originalname).slice(0, 12)),
+});
+const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
 
 const app = express();
 app.use(express.json());
@@ -64,6 +75,7 @@ function requireAdmin(req, res, next) {
   next();
 }
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(uploadsDir));  // protected (behind auth gate above)
 
 // ---------- Overview / Dashboard ----------
 app.get('/api/overview', (req, res) => {
@@ -211,6 +223,26 @@ app.post('/api/events', (req, res) => {
 });
 app.delete('/api/events/:id', (req, res) => {
   db.prepare('DELETE FROM events WHERE id=?').run(req.params.id);
+  db.prepare('SELECT filename FROM attachments WHERE event_id=?').all(req.params.id)
+    .forEach(a => { try { fs.unlinkSync(path.join(uploadsDir, a.filename)); } catch (_) {} });
+  db.prepare('DELETE FROM attachments WHERE event_id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+// ---------- attachments (photos/files per event) ----------
+app.get('/api/events/:id/attachments', (req, res) => {
+  res.json(db.prepare('SELECT * FROM attachments WHERE event_id=? ORDER BY id DESC').all(req.params.id));
+});
+app.post('/api/events/:id/attachments', upload.array('files', 9), (req, res) => {
+  const ins = db.prepare(`INSERT INTO attachments (event_id,filename,original,mime,size,uploaded_by,note,created_at)
+    VALUES (?,?,?,?,?,?,?,?)`);
+  const now = new Date().toISOString();
+  (req.files || []).forEach(f => ins.run(req.params.id, f.filename, f.originalname, f.mimetype, f.size,
+    req.user.name || req.user.username, req.body.note || '', now));
+  res.json(db.prepare('SELECT * FROM attachments WHERE event_id=? ORDER BY id DESC').all(req.params.id));
+});
+app.delete('/api/attachments/:id', (req, res) => {
+  const a = db.prepare('SELECT * FROM attachments WHERE id=?').get(req.params.id);
+  if (a) { try { fs.unlinkSync(path.join(uploadsDir, a.filename)); } catch (_) {} db.prepare('DELETE FROM attachments WHERE id=?').run(req.params.id); }
   res.json({ ok: true });
 });
 

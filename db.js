@@ -48,6 +48,11 @@ function init() {
       sold INTEGER DEFAULT 0, stock INTEGER DEFAULT 0, note TEXT, updated_at TEXT,
       UNIQUE(dealer_code, ym, model)
     );
+    CREATE TABLE IF NOT EXISTS attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER, filename TEXT, original TEXT, mime TEXT, size INTEGER,
+      uploaded_by TEXT, note TEXT, created_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS store_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       dealer_code TEXT, dealer_name TEXT, ym TEXT, tier TEXT,

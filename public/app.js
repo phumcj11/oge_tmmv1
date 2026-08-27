@@ -620,8 +620,11 @@ function openEventEditor(ev) {
 
     <h3 class="sec">👥 Manpower (ทีมงาน)</h3>
     <div id="manpowerBox"></div>
+
+    <h3 class="sec">📸 รูปหน้างาน / ไฟล์แนบ</h3>
+    <div id="attachBox"></div>
   </div>`;
-  drawBudget(readonly); drawStock(readonly); drawAction(readonly); drawManpower(readonly);
+  drawBudget(readonly); drawStock(readonly); drawAction(readonly); drawManpower(readonly); drawAttachments(ev.id, readonly);
   $('#ecancel').addEventListener('click', renderEvents);
   const save = $('#esave');
   if (save) save.addEventListener('click', () => saveEvent(ev.id));
@@ -711,6 +714,33 @@ function drawManpower(readonly) {
   box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => { evManpower.splice(+e.target.dataset.del, 1); drawManpower(readonly); }));
   $('#mpadd')?.addEventListener('click', () => { evManpower.push({ role:'', name:'', phone:'', note:'' }); drawManpower(readonly); });
   $('#mptmpl')?.addEventListener('click', () => { if (!evManpower.length || confirm('เพิ่ม template เข้าไป?')) { MP_TEMPLATE.forEach(([r,n,p,nt]) => evManpower.push({ role:r, name:n, phone:p, note:nt })); drawManpower(readonly); } });
+}
+async function drawAttachments(eventId, readonly) {
+  const box = $('#attachBox'); if (!box) return;
+  if (!eventId) { box.innerHTML = '<div class="muted">💾 บันทึกกิจกรรมก่อน จึงแนบรูป/ไฟล์หน้างานได้</div>'; return; }
+  const list = await api('/api/events/' + eventId + '/attachments');
+  const isImg = m => (m || '').startsWith('image/');
+  box.innerHTML = `
+    ${readonly ? '' : `<div class="att-up"><label class="btn sm">📷 อัปโหลดรูป/ไฟล์<input type="file" id="attFile" multiple accept="image/*,application/pdf" style="display:none"></label>
+      <span class="muted" style="margin-left:8px">สูงสุด 9 ไฟล์ต่อครั้ง · ไฟล์ละ ≤15MB</span></div>`}
+    <div class="attgrid">${list.map(a => `<div class="att">
+      ${isImg(a.mime) ? `<a href="/uploads/${a.filename}" target="_blank"><img src="/uploads/${a.filename}" loading="lazy"></a>`
+                       : `<a href="/uploads/${a.filename}" target="_blank" class="attfile">📄</a>`}
+      <div class="att-meta">${esc((a.original||'').slice(0, 22))}<small>${esc(a.uploaded_by||'')}</small></div>
+      ${readonly ? '' : `<button class="att-del" data-aid="${a.id}" title="ลบ">✕</button>`}
+    </div>`).join('') || '<div class="muted">ยังไม่มีรูป/ไฟล์หน้างาน</div>'}</div>`;
+  $('#attFile')?.addEventListener('change', async e => {
+    if (!e.target.files.length) return;
+    const fd = new FormData(); [...e.target.files].forEach(f => fd.append('files', f));
+    toast('กำลังอัปโหลด...');
+    const r = await fetch('/api/events/' + eventId + '/attachments', { method: 'POST', body: fd });
+    if (!r.ok) { toast('อัปโหลดไม่สำเร็จ'); return; }
+    toast('อัปโหลดแล้ว'); drawAttachments(eventId, readonly);
+  });
+  box.querySelectorAll('.att-del').forEach(b => b.addEventListener('click', async e => {
+    if (!confirm('ลบไฟล์นี้?')) return;
+    await del('/api/attachments/' + e.currentTarget.dataset.aid); drawAttachments(eventId, readonly);
+  }));
 }
 async function saveEvent(id) {
   const dcode = $('#e_dealer').value;

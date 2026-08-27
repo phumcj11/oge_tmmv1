@@ -14,3 +14,4 @@ Thumbs.db
 
 # env / secrets (ถ้ามีในอนาคต)
 .env
+uploads/
