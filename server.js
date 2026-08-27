@@ -85,10 +85,58 @@ app.get('/api/dealers', (req, res) => {
   res.json(db.prepare('SELECT * FROM dealers ORDER BY sellin DESC').all());
 });
 app.put('/api/dealers/:code', (req, res) => {
-  const { phone, line, tier } = req.body;
-  db.prepare('UPDATE dealers SET phone=?, line=?, tier=? WHERE code=?')
-    .run(phone ?? '', line ?? '', tier ?? '', req.params.code);
+  const cur = db.prepare('SELECT * FROM dealers WHERE code=?').get(req.params.code);
+  if (!cur) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  db.prepare('UPDATE dealers SET phone=?, line=?, tier=?, sales_rep=?, credit=? WHERE code=?')
+    .run(b.phone ?? cur.phone, b.line ?? cur.line, b.tier ?? cur.tier,
+         b.sales_rep ?? cur.sales_rep, b.credit ?? cur.credit, req.params.code);
   res.json(db.prepare('SELECT * FROM dealers WHERE code=?').get(req.params.code));
+});
+// Dealer 360° — aggregate everything about one dealer
+app.get('/api/dealers/:code/360', (req, res) => {
+  const code = req.params.code;
+  const dealer = db.prepare('SELECT * FROM dealers WHERE code=?').get(code);
+  if (!dealer) return res.status(404).json({ error: 'not found' });
+  const soRows = db.prepare('SELECT * FROM sellout WHERE dealer_code=? ORDER BY ym DESC, model').all(code);
+  const sellout = {
+    sold: soRows.reduce((s, r) => s + (r.sold || 0), 0),
+    stock: soRows.reduce((s, r) => s + (r.stock || 0), 0),
+    byModel: Object.values(soRows.reduce((a, r) => {
+      (a[r.model] = a[r.model] || { model: r.model, sold: 0, stock: 0 });
+      a[r.model].sold += r.sold || 0; a[r.model].stock += r.stock || 0; return a;
+    }, {})).sort((x, y) => y.sold - x.sold),
+    recent: soRows.slice(0, 6),
+  };
+  const evRows = db.prepare('SELECT * FROM events WHERE dealer_code=? ORDER BY start_date DESC, id DESC').all(code)
+    .map(r => { try { r.budget_lines = JSON.parse(r.budget_lines || '[]'); } catch (_) {} return r; });
+  const today = new Date().toISOString().slice(0, 10);
+  const events = {
+    total: evRows.length,
+    upcoming: evRows.filter(e => e.start_date && e.start_date >= today).length,
+    list: evRows.slice(0, 8),
+    tgt: { sellout: 0, lead: 0, test: 0, train: 0 }, act: { sellout: 0, lead: 0, test: 0, train: 0 },
+  };
+  evRows.forEach(e => {
+    events.tgt.sellout += e.target_sellout || 0; events.tgt.lead += e.target_lead || 0;
+    events.tgt.test += e.target_testride || 0; events.tgt.train += e.target_training || 0;
+    events.act.sellout += e.sales_units || 0; events.act.lead += e.leads || 0;
+    events.act.test += e.test_ride || 0; events.act.train += e.act_training || 0;
+  });
+  const auditRows = db.prepare('SELECT * FROM store_audit WHERE dealer_code=? ORDER BY ym DESC').all(code);
+  let audit = null;
+  if (auditRows.length) {
+    const a = auditRows[0]; let cl = {}; try { cl = JSON.parse(a.checklist || '{}'); } catch (_) {}
+    const passed = ['display','signage','clean','testride','staff','online','followup'].filter(k => cl[k]).length;
+    audit = { ym: a.ym, readiness: Math.round(100 * passed / 7),
+      conversion: a.lead > 0 ? Math.round(100 * a.sold / a.lead) : 0,
+      lead: a.lead, test_ride: a.test_ride, quote: a.quote, sold: a.sold };
+  }
+  const collected = dealer.sellin || 0;
+  const orderVal = collected + (dealer.outstanding || 0);
+  res.json({ dealer, sellout, events, audit,
+    finance: { sellin: collected, outstanding: dealer.outstanding || 0,
+      collectPct: orderVal ? Math.round(100 * collected / orderVal) : 0 } });
 });
 app.post('/api/dealers', (req, res) => {
   const b = req.body;

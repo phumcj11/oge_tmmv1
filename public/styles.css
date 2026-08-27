@@ -131,6 +131,31 @@ small.sub{color:#98a2b3;font-size:11px;display:block}
 .modal input,.modal select{width:100%;padding:8px 10px;border:1px solid #cfd6e0;border-radius:8px;font-family:inherit;font-size:13px}
 .modal-act{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
 
+/* ---- Dealer 360 ---- */
+.d360-bg{padding:20px}
+.d360{background:#fff;border-radius:18px;width:min(920px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden;animation:d3pop .18s ease}
+@keyframes d3pop{from{opacity:0;transform:scale(.97) translateY(8px)}to{opacity:1;transform:none}}
+.d360-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:#111;color:#fff;border-bottom:3px solid var(--brand)}
+.d360-title{font-size:19px;font-weight:800;display:flex;align-items:center;gap:8px}
+.d360-sub{font-size:12.5px;opacity:.75;margin-top:2px}
+.d360-x{background:rgba(255,255,255,.14);color:#fff;border:none;width:32px;height:32px;border-radius:9px;font-size:16px;cursor:pointer}
+.d360-x:hover{background:rgba(255,255,255,.28)}
+.d360-body{padding:20px 22px;overflow-y:auto}
+.d360-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:18px}
+.d3k{background:#f7f9f6;border-radius:12px;padding:14px}
+.d3k .l{font-size:11.5px;color:var(--muted)} .d3k .v{font-size:20px;font-weight:800;margin-top:2px;line-height:1.1} .d3k .s{font-size:10.5px;color:#98a2b3;margin-top:2px}
+.d3sec{background:#fafbfa;border:1px solid #eef0ee;border-radius:14px;padding:14px 16px}
+.d3sec h4{margin:0 0 10px;font-size:13.5px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.d3list{display:flex;flex-direction:column;gap:2px;max-height:200px;overflow-y:auto}
+.d3row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid #f0f2f0;font-size:13px}
+.d3row:last-child{border-bottom:none}
+.d3mini{font-size:11.5px;color:#667085;white-space:nowrap}
+.d3funnel{font-size:13px} .d3ready{margin-bottom:10px} .d3ready .rbar{width:100%;height:9px;margin-bottom:5px}
+.d3fn{display:flex;gap:14px;flex-wrap:wrap;color:#475467;font-size:12.5px} .d3fn b{color:#1a2027}
+.d3form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.d3form .fg label{font-size:11.5px}
+@media(max-width:640px){.d3form{grid-template-columns:1fr}}
+
 /* ---- modern polish + responsive ---- */
 .badge{font-weight:600;letter-spacing:.1px}
 tr:hover td{background:#f6faf3}

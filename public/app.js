@@ -174,17 +174,24 @@ function drawDealers() {
     (!q || (d.name+d.code+d.province).toLowerCase().includes(q)));
   $('#dcount').textContent = rows.length + ' ราย';
   $('#dtable').innerHTML =
-    `<tr><th>รหัส</th><th>Dealer</th><th>จังหวัด</th><th class="num">Sell-in</th><th class="num">PO</th>
+    `<tr><th>รหัส</th><th>Dealer</th><th>จังหวัด</th><th class="num">Sell-in</th><th class="num">ค้างชำระ</th><th class="num">PO</th>
       <th>Tier</th><th>เบอร์โทร</th><th>LINE</th><th></th></tr>` +
     rows.map(d => `<tr data-code="${d.code}">
-      <td>${d.code}</td><td>${esc(d.name)}</td><td>${esc(d.province)||'-'}</td>
-      <td class="num">${baht(d.sellin)}</td><td class="num">${d.po}</td>
+      <td>${d.code}</td>
+      <td><b class="lnk d360" style="color:var(--accent);cursor:pointer">${esc(d.name)}</b>${d.sales_rep?`<small class="sub">👤 ${esc(d.sales_rep)}</small>`:''}</td>
+      <td>${esc(d.province)||'-'}</td>
+      <td class="num">${baht(d.sellin)}</td>
+      <td class="num" style="color:${d.outstanding>0?'#e53935':'#98a2b3'}">${d.outstanding>0?baht(d.outstanding):'-'}</td>
+      <td class="num">${d.po}</td>
       <td><select class="cell f-tier"><option value="">-</option>
         ${['A','B','C'].map(t=>`<option ${d.tier===t?'selected':''}>${t}</option>`).join('')}</select></td>
       <td><input class="cell f-phone" value="${esc(d.phone)}" placeholder="เบอร์"></td>
       <td><input class="cell f-line" value="${esc(d.line)}" placeholder="LINE ID"></td>
-      <td style="white-space:nowrap"><button class="btn sm f-save">บันทึก</button>
+      <td style="white-space:nowrap"><button class="btn sm ghost d360">360°</button>
+        <button class="btn sm f-save">บันทึก</button>
         <button class="btn sm del danger f-del">ลบ</button></td></tr>`).join('');
+  $('#dtable').querySelectorAll('.d360').forEach(b => b.addEventListener('click', e =>
+    openDealer360(e.target.closest('tr').dataset.code)));
   $('#dtable').querySelectorAll('.f-save').forEach(b => b.addEventListener('click', async e => {
     const tr = e.target.closest('tr'); const code = tr.dataset.code;
     const body = { phone: tr.querySelector('.f-phone').value, line: tr.querySelector('.f-line').value, tier: tr.querySelector('.f-tier').value };
@@ -199,6 +206,77 @@ function drawDealers() {
     dealerCache = dealerCache.filter(x => x.code !== code);
     toast('ลบ ' + code + ' แล้ว'); drawDealers();
   }));
+}
+
+// ================= DEALER 360° =================
+async function openDealer360(code) {
+  const data = await api('/api/dealers/' + code + '/360');
+  if (!data.dealer) return;
+  const d = data.dealer, f = data.finance, so = data.sellout, ev = data.events, au = data.audit;
+  const ro = currentUser.role === 'viewer';
+  const achv = (a, t) => t > 0 ? Math.round(100 * a / t) : 0;
+  const tierBadge = d.tier ? `<span class="tierb tier-${d.tier}">${d.tier}</span>` : '<span class="tierb" style="background:#cfd6dd">-</span>';
+  const EVTt = { activation:'กิจกรรมหน้าร้าน', training:'อบรม', testride:'ทดลองขับ', other:'อื่นๆ' };
+  const kpi = (l, v, c, s) => `<div class="d3k"><div class="l">${l}</div><div class="v" style="color:${c||'#1a2027'}">${v}</div><div class="s">${s||''}</div></div>`;
+  const evList = ev.list.length ? ev.list.map(e => `<div class="d3row"><div><b>${esc(e.activity_name||EVTt[e.type]||'กิจกรรม')}</b>
+      <small class="sub">${esc(e.start_date||e.event_date||'')} · ${EVTt[e.type]||e.type}${e.tier?' · '+e.tier:''}</small></div>
+      <div class="d3mini">L ${e.leads||0}/${e.target_lead||0} · ปิด ${e.sales_units||0}/${e.target_sellout||0}</div></div>`).join('')
+    : '<div class="muted">ยังไม่มีกิจกรรม</div>';
+  const soList = so.byModel.length ? so.byModel.map(m => `<div class="d3row"><b>${esc(m.model)}</b><div class="d3mini">ขายออก ${m.sold} · สต็อก ${m.stock}</div></div>`).join('')
+    : '<div class="muted">ยังไม่มีข้อมูล Sell-out</div>';
+  const auditBlock = au ? `<div class="d3funnel">
+      <div class="d3ready"><div class="rbar" style="width:100%"><div style="width:${au.readiness}%;background:${au.readiness>=80?'#2e7d32':au.readiness>=50?'#ef6c00':'#e53935'}"></div></div><b>${au.readiness}%</b> ความพร้อม (${au.ym})</div>
+      <div class="d3fn"><span>Lead <b>${au.lead}</b></span><span>Test <b>${au.test_ride}</b></span><span>เสนอ <b>${au.quote}</b></span><span>ปิด <b>${au.sold}</b></span><span>Conv <b>${au.conversion}%</b></span></div></div>`
+    : '<div class="muted">ยังไม่มีการประเมินมาตรฐานร้าน</div>';
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg d360-bg';
+  bg.innerHTML = `<div class="d360">
+    <div class="d360-head">
+      <div><div class="d360-title">${esc(d.name)} ${tierBadge}</div>
+        <div class="d360-sub">${d.code} · ${esc(d.province)||'-'}${d.phone?' · 📞 '+esc(d.phone):''}${d.line?' · '+esc(d.line):''}</div></div>
+      <button class="d360-x" id="d3close">✕</button>
+    </div>
+    <div class="d360-body">
+      <div class="d360-kpis">
+        ${kpi('Sell-in', baht(f.sellin), '#2E9E1E', 'บาท')}
+        ${kpi('Sell-out', so.sold.toLocaleString(), '#00897B', 'คัน · สต็อก '+so.stock)}
+        ${kpi('ค้างชำระ', baht(f.outstanding), f.outstanding>0?'#e53935':'#2e7d32', 'เก็บได้ '+f.collectPct+'%')}
+        ${kpi('ความพร้อมร้าน', (au?au.readiness:0)+'%', (au&&au.readiness>=80)?'#2e7d32':'#ef6c00', au?'ประเมิน '+au.ym:'ยังไม่ประเมิน')}
+        ${kpi('กิจกรรม', ev.total, '#6A1B9A', ev.upcoming+' ที่จะถึง')}
+      </div>
+      <div class="grid2">
+        <div class="d3sec"><h4>🎪 กิจกรรม ${ro?'':'<button class="btn sm ghost" id="d3ev">➕ สร้าง</button>'}</h4><div class="d3list">${evList}</div></div>
+        <div class="d3sec"><h4>📈 Sell-out / สต็อก ตามรุ่น ${ro?'':'<button class="btn sm ghost" id="d3so">➕ บันทึก</button>'}</h4><div class="d3list">${soList}</div></div>
+      </div>
+      <div class="grid2">
+        <div class="d3sec"><h4>🏬 มาตรฐานร้าน ${ro?'':'<button class="btn sm ghost" id="d3au">➕ ประเมิน</button>'}</h4>${auditBlock}</div>
+        <div class="d3sec"><h4>📇 โปรไฟล์ & ติดต่อ</h4>
+          <div class="d3form">
+            <div class="fg"><label>ระดับร้าน (Tier)</label><select id="d3tier" ${ro?'disabled':''}><option value="">-</option>${['A','B','C'].map(t=>`<option ${d.tier===t?'selected':''}>${t}</option>`).join('')}</select></div>
+            <div class="fg"><label>เซลล์ที่ดูแล</label><input id="d3rep" value="${esc(d.sales_rep)}" ${ro?'disabled':''}></div>
+            <div class="fg"><label>เบอร์โทร</label><input id="d3phone" value="${esc(d.phone)}" ${ro?'disabled':''}></div>
+            <div class="fg"><label>LINE</label><input id="d3line" value="${esc(d.line)}" ${ro?'disabled':''}></div>
+            <div class="fg"><label>เงื่อนไขเครดิต</label><input id="d3credit" value="${esc(d.credit)}" placeholder="เช่น 30 วัน" ${ro?'disabled':''}></div>
+          </div>
+          ${ro?'':'<button class="btn sm" id="d3save" style="margin-top:10px">💾 บันทึกโปรไฟล์</button>'}
+        </div>
+      </div>
+    </div></div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.addEventListener('click', e => { if (e.target === bg) close(); });
+  $('#d3close').addEventListener('click', close);
+  $('#d3save')?.addEventListener('click', async () => {
+    const body = { tier: $('#d3tier').value, sales_rep: $('#d3rep').value, phone: $('#d3phone').value, line: $('#d3line').value, credit: $('#d3credit').value };
+    await api('/api/dealers/' + code, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const i = dealerCache.findIndex(x => x.code === code); if (i>=0) Object.assign(dealerCache[i], body);
+    toast('บันทึกโปรไฟล์แล้ว'); close(); if ($('#dtable')) drawDealers();
+  });
+  const goTab = t => { close(); document.querySelector(`.tab[data-t="${t}"]`).click(); };
+  $('#d3ev')?.addEventListener('click', () => { close(); document.querySelector('.tab[data-t="events"]').click();
+    setTimeout(() => openEventEditor({ dealer_code: d.code, dealer_name: d.name, province: d.province, tier: d.tier }), 350); });
+  $('#d3so')?.addEventListener('click', () => goTab('sellout'));
+  $('#d3au')?.addEventListener('click', () => goTab('audit'));
 }
 
 // ================= EVENTS (aligned to Lark "กิจกรรม ARM" form) =================

@@ -83,6 +83,10 @@ function init() {
   };
   for (const [c, def] of Object.entries(eAdd))
     if (!ecols.includes(c)) db.exec(`ALTER TABLE events ADD COLUMN ${c} ${def}`);
+  // dealers: TMM profile fields
+  const dcols = db.prepare("PRAGMA table_info(dealers)").all().map(c => c.name);
+  if (!dcols.includes('sales_rep')) db.exec("ALTER TABLE dealers ADD COLUMN sales_rep TEXT DEFAULT ''");
+  if (!dcols.includes('credit')) db.exec("ALTER TABLE dealers ADD COLUMN credit TEXT DEFAULT ''");
   // create a default admin on first run (persists across data reseeds)
   if (db.prepare('SELECT COUNT(*) c FROM users').get().c === 0) {
     const salt = crypto.randomBytes(16).toString('hex');
