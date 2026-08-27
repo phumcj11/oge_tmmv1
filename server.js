@@ -257,6 +257,16 @@ app.delete('/api/projects/:id', (req, res) => {
   db.prepare('DELETE FROM projects WHERE id=?').run(req.params.id);
   res.json({ ok: true });
 });
+// bulk-assign events to a project (or unassign when project_id is null)
+app.post('/api/projects/:id/events', (req, res) => {
+  const pid = req.params.id === 'none' ? null : +req.params.id;
+  if (pid !== null && !db.prepare('SELECT 1 FROM projects WHERE id=?').get(pid)) return res.status(404).json({ error: 'not found' });
+  const ids = Array.isArray(req.body.event_ids) ? req.body.event_ids : [];
+  const upd = db.prepare('UPDATE events SET project_id=? WHERE id=?');
+  const tx = db.transaction(list => list.forEach(id => upd.run(pid, id)));
+  tx(ids);
+  res.json({ ok: true, updated: ids.length });
+});
 app.get('/api/events', (req, res) => {
   res.json(db.prepare('SELECT * FROM events ORDER BY start_date DESC, week, id').all().map(eventRow));
 });

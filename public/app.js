@@ -151,9 +151,10 @@ async function renderDealers() {
   dealerCache = await api('/api/dealers');
   const el = $('#dealers');
   const sub = (v, label) => `<button class="sub ${dealerView===v?'on':''}" data-dv="${v}">${label}</button>`;
-  el.innerHTML = `<div class="subnav">${sub('list','📋 รายชื่อ')}${sub('overview','📊 ภาพรวม')}${sub('region','🗺️ แบ่งตามภาค')}${sub('insights','🤖 AI Insights')}</div><div id="dealerBody"></div>`;
+  el.innerHTML = `<div class="subnav">${sub('list','📋 รายชื่อ')}${sub('map','📍 แผนที่')}${sub('overview','📊 ภาพรวม')}${sub('region','🗺️ แบ่งตามภาค')}${sub('insights','🤖 AI Insights')}</div><div id="dealerBody"></div>`;
   el.querySelectorAll('.sub').forEach(b => b.addEventListener('click', () => { dealerView = b.dataset.dv; renderDealers(); }));
   if (dealerView === 'list') renderDealerList();
+  else if (dealerView === 'map') renderDealerMap();
   else if (dealerView === 'overview') renderDealerOverview();
   else if (dealerView === 'region') renderDealerRegion();
   else if (dealerView === 'insights') renderDealerInsights();
@@ -218,6 +219,65 @@ function drawDealers() {
     dealerCache = dealerCache.filter(x => x.code !== code);
     toast('ลบ ' + code + ' แล้ว'); drawDealers();
   }));
+}
+
+// ---- Dealer sub-view: แผนที่ ----
+let dealerMap = null;
+const REGION_PIN = { 'เหนือ': '#00897B', 'กลาง': '#2E9E1E', 'อีสาน': '#E65100', 'ใต้': '#C2185B', 'กรุงเทพ ปริมณฑล': '#F9A825', 'อื่นๆ/ไม่ระบุ': '#78909c' };
+function renderDealerMap() {
+  const withLL = dealerCache.filter(d => d.lat && d.lon);
+  $('#dealerBody').innerHTML = `
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="map-hd"><b>📍 แผนที่ Dealer</b> <span class="muted">ปักหมุด ${withLL.length} ร้าน (จากทั้งหมด ${dealerCache.length})</span>
+      <span class="spacer"></span>
+      <select id="mapRegion" class="cell"><option value="">ทุกภาค</option>${[...new Set(dealerCache.map(dealerRegion))].sort().map(r=>`<option>${esc(r)}</option>`).join('')}</select>
+      <select id="mapTier" class="cell"><option value="">ทุก Tier</option><option>A</option><option>B</option><option>C</option></select>
+    </div>
+    <div id="leafmap" style="height:70vh;width:100%;background:#eef1ec"></div>
+  </div>`;
+  if (typeof L === 'undefined') { $('#leafmap').innerHTML = '<div class="muted" style="padding:30px;text-align:center">โหลดไลบรารีแผนที่ไม่สำเร็จ</div>'; return; }
+  L.Icon.Default.imagePath = 'vendor/leaflet/images/';
+  dealerMap = L.map('leafmap', { scrollWheelZoom: true }).setView([13.5, 100.9], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+  }).addTo(dealerMap);
+  const cluster = L.markerClusterGroup({ maxClusterRadius: 45, spiderfyOnMaxZoom: true });
+  const baht0 = n => (+n || 0).toLocaleString('th-TH');
+  function draw() {
+    cluster.clearLayers();
+    const reg = $('#mapRegion').value, tier = $('#mapTier').value;
+    const pts = [];
+    withLL.forEach(d => {
+      if (reg && dealerRegion(d) !== reg) return;
+      if (tier && (d.tier || '') !== tier) return;
+      const color = REGION_PIN[dealerRegion(d)] || '#2E9E1E';
+      const gmap = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name + ' ' + (d.province || ''))}`;
+      const m = L.marker([d.lat, d.lon]);
+      m.bindPopup(`<div class="mappop">
+        <b>${esc(d.name)}</b> <span class="mp-code">${esc(d.code)}</span>
+        <div class="mp-row">📍 ${esc(d.province || '-')} · <span style="color:${color}">${esc(dealerRegion(d))}</span>${d.tier?` · Tier ${esc(d.tier)}`:''}</div>
+        <div class="mp-grid">
+          <div><span>Sell-in</span><b>${baht0(d.sellin)}</b></div>
+          <div><span>ค้างชำระ</span><b style="color:${d.outstanding>0?'#c62828':'#2e7d32'}">${baht0(d.outstanding)}</b></div>
+          <div><span>PO</span><b>${d.po||0}</b></div>
+        </div>
+        ${d.phone?`<div class="mp-row">📞 ${esc(d.phone)}${d.line?` · LINE ${esc(d.line)}`:''}</div>`:''}
+        <div class="mp-act"><button class="btn sm mp-360" data-code="${esc(d.code)}">ดู 360°</button>
+          <a class="btn sm ghost" href="${gmap}" target="_blank">Google Maps ↗</a></div>
+      </div>`);
+      cluster.addLayer(m); pts.push([d.lat, d.lon]);
+    });
+    dealerMap.addLayer(cluster);
+    if (pts.length) dealerMap.fitBounds(pts, { padding: [40, 40], maxZoom: 11 });
+  }
+  draw();
+  $('#mapRegion').addEventListener('change', draw);
+  $('#mapTier').addEventListener('change', draw);
+  dealerMap.on('popupopen', e => {
+    const btn = e.popup.getElement().querySelector('.mp-360');
+    if (btn) btn.addEventListener('click', () => openDealer360(btn.dataset.code));
+  });
+  setTimeout(() => dealerMap.invalidateSize(), 120); // fix tiles when container just shown
 }
 
 // ---- Dealer sub-view: ภาพรวม ----
@@ -504,6 +564,7 @@ function wireCalendar() {
 }
 
 // ---- Event Gantt (timeline) ----
+let ganttGroup = 'dealer';
 const THMON = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 function toDate(s) {
   if (!s) return null;
@@ -551,13 +612,16 @@ function buildGantt() {
   // today line
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayLine = (today >= min && today <= max) ? `<div class="gt-today" style="left:${pct(dDiff(min, today))}"></div>` : '';
-  // group by dealer, sort groups by earliest start
+  // group by dealer or project (toggle)
+  const projName = id => (projectCache.find(p => p.id === id) || {}).name || '— ไม่อยู่ในโครงการ —';
+  const groupKey = r => ganttGroup === 'project' ? projName(r.e.project_id) : (r.e.dealer_name || r.e.company || 'ไม่ระบุร้าน');
+  const groupIcon = ganttGroup === 'project' ? '📁' : '🏪';
   const groups = {};
-  rows.forEach(r => { const k = r.e.dealer_name || r.e.company || 'ไม่ระบุร้าน'; (groups[k] = groups[k] || []).push(r); });
+  rows.forEach(r => { const k = groupKey(r); (groups[k] = groups[k] || []).push(r); });
   const order = Object.keys(groups).sort((a, b) => Math.min(...groups[a].map(r => r.sp.s)) - Math.min(...groups[b].map(r => r.sp.s)));
   let body = '';
   order.forEach(g => {
-    body += `<div class="gt-group"><div class="gt-glabel">🏪 ${esc(g)}</div><div class="gt-gtrack">${todayLine}</div></div>`;
+    body += `<div class="gt-group"><div class="gt-glabel">${groupIcon} ${esc(g)}</div><div class="gt-gtrack">${todayLine}</div></div>`;
     groups[g].sort((a, b) => a.sp.s - b.sp.s).forEach(({ e, sp }) => {
       const left = pct(dDiff(min, sp.s));
       const w = 100 * (dDiff(sp.s, sp.end) + 1) / total;
@@ -572,7 +636,10 @@ function buildGantt() {
     });
   });
   const legend = Object.keys(EV_TYPE).map(k => `<span class="cal-lg"><i style="background:${EV_TCOLOR[k]}"></i>${EV_TYPE[k]}</span>`).join('');
-  return `<div class="gantt"><div class="gt-inner">
+  const groupTog = `<div class="gt-toolbar"><span class="muted">จัดกลุ่มตาม:</span>
+    <button class="vt sm ${ganttGroup==='dealer'?'on':''}" id="ggDealer">🏪 ร้าน</button>
+    <button class="vt sm ${ganttGroup==='project'?'on':''}" id="ggProject">📁 โครงการ</button></div>`;
+  return `${groupTog}<div class="gantt"><div class="gt-inner">
     <div class="gt-monthrow"><div class="gt-label sp"></div><div class="gt-track gt-months">${months}</div></div>
     ${body}
   </div></div>
@@ -581,6 +648,8 @@ function buildGantt() {
   ${noDate.length?`<div class="muted" style="margin-top:8px">⏳ อีก ${noDate.length} กิจกรรมยังไม่ระบุวันเริ่ม (ไม่แสดงบน Gantt)</div>`:''}`;
 }
 function wireGantt() {
+  $('#ggDealer')?.addEventListener('click', () => { ganttGroup = 'dealer'; renderEvents(); });
+  $('#ggProject')?.addEventListener('click', () => { ganttGroup = 'project'; renderEvents(); });
   document.querySelectorAll('#events .gt-row').forEach(r => r.addEventListener('click', () =>
     openEventEditor(eventCache.find(x => x.id == r.dataset.id))));
 }
@@ -1135,7 +1204,7 @@ async function renderProjects() {
       ${p.goal?`<div class="pj-goal">🎯 ${esc(p.goal)}</div>`:''}
       <div class="pj-prog"><div class="pj-prog-bar"><i style="width:${prog}%"></i></div><small>${p.done}/${p.events} กิจกรรมเสร็จ · ${prog}%</small></div>
       <div class="pj-minis">${mini('Sell-out', p.a_sellout, p.t_sellout)}${mini('Lead', p.a_lead, p.t_lead)}${mini('Test', p.a_test, p.t_test)}<div class="pj-mini"><span>งบใช้</span><b>${baht(p.budget_used||0)}</b></div></div>
-      <div class="pj-actions"><button class="btn sm pj-open">เปิดกิจกรรม →</button>${ro?'':'<button class="btn sm ghost pj-edit">แก้ไข</button><button class="btn sm del danger pj-del">ลบ</button>'}</div>
+      <div class="pj-actions"><button class="btn sm pj-open">เปิดกิจกรรม →</button>${ro?'':'<button class="btn sm ghost pj-assign">📋 จัดกิจกรรม</button><button class="btn sm ghost pj-edit">แก้ไข</button><button class="btn sm del danger pj-del">ลบ</button>'}</div>
     </div>`;
   };
   el.innerHTML = `
@@ -1155,6 +1224,7 @@ async function renderProjects() {
   el.querySelectorAll('.pj-card').forEach(c => {
     const id = +c.dataset.id;
     c.querySelector('.pj-open').addEventListener('click', () => { projectFilter = id; document.querySelector('.tab[data-t="events"]').click(); });
+    c.querySelector('.pj-assign')?.addEventListener('click', () => openProjectEvents(projects.find(p => p.id === id)));
     c.querySelector('.pj-edit')?.addEventListener('click', () => openProjectEditor(projects.find(p => p.id === id)));
     c.querySelector('.pj-del')?.addEventListener('click', async () => {
       if (!confirm('ลบโครงการนี้? (กิจกรรมข้างในจะไม่ถูกลบ แต่จะหลุดออกจากโครงการ)')) return;
@@ -1191,6 +1261,47 @@ function openProjectEditor(p) {
     const d = p.id ? await api('/api/projects/' + p.id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
                    : await api('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (d.id) { toast('บันทึกโครงการแล้ว'); renderProjects(); }
+  });
+}
+async function openProjectEvents(p) {
+  const el = $('#projects');
+  const evs = await api('/api/events');
+  const pname = id => (projectCache.find(x => x.id === id) || {}).name || '';
+  const row = e => {
+    const inThis = e.project_id === p.id;
+    const other = e.project_id && !inThis ? `<span class="pill-warn">อยู่ใน: ${esc(pname(e.project_id))}</span>` : '';
+    return `<label class="pe-row ${inThis?'on':''}">
+      <input type="checkbox" class="pe-chk" data-id="${e.id}" ${inThis?'checked':''}>
+      <span class="pe-name">${esc(e.activity_name||'(ไม่มีชื่อ)')}<small>${esc(e.dealer_name||e.company||'-')} · ${esc(e.start_date||e.event_date||'ไม่ระบุวัน')}</small></span>
+      <span class="pe-type" style="background:${EV_TCOLOR[e.type]||'#78909c'}">${EV_TYPE[e.type]||e.type||'-'}</span>${other}
+    </label>`;
+  };
+  // sort: this project's events first, then unassigned, then others
+  const sorted = [...evs].sort((a, b) => (b.project_id===p.id) - (a.project_id===p.id) || (!!a.project_id) - (!!b.project_id));
+  el.innerHTML = `<div class="card"><div class="toolbar"><h2 style="margin:0">📋 จัดกิจกรรมเข้าโครงการ</h2>
+    <span class="muted" style="color:${p.color||'#2E9E1E'}">▍<b>${esc(p.name)}</b></span>
+    <span class="spacer"></span><button class="btn ghost" id="pecancel">← กลับ</button><button class="btn" id="pesave">💾 บันทึก</button></div>
+    <div class="toolbar" style="margin-top:8px"><input id="pesearch" placeholder="🔎 ค้นหากิจกรรม..." style="flex:1">
+      <button class="btn sm ghost" id="peall">เลือกทั้งหมด</button><button class="btn sm ghost" id="penone">ล้าง</button>
+      <span class="muted"><b id="pecount">0</b> เลือกไว้</span></div>
+    <div class="pe-list" id="pelist">${sorted.map(row).join('')}</div>
+  </div>`;
+  const upd = () => $('#pecount').textContent = el.querySelectorAll('.pe-chk:checked').length;
+  const wireRow = () => el.querySelectorAll('.pe-chk').forEach(c => c.addEventListener('change', e => { e.target.closest('.pe-row').classList.toggle('on', e.target.checked); upd(); }));
+  wireRow(); upd();
+  $('#pesearch').addEventListener('input', e => { const q = e.target.value.toLowerCase();
+    el.querySelectorAll('.pe-row').forEach(r => r.style.display = r.querySelector('.pe-name').textContent.toLowerCase().includes(q) ? '' : 'none'); });
+  $('#peall').addEventListener('click', () => { el.querySelectorAll('.pe-row').forEach(r => { if (r.style.display!=='none') { const c=r.querySelector('.pe-chk'); c.checked=true; r.classList.add('on'); } }); upd(); });
+  $('#penone').addEventListener('click', () => { el.querySelectorAll('.pe-chk').forEach(c => { c.checked=false; c.closest('.pe-row').classList.remove('on'); }); upd(); });
+  $('#pecancel').addEventListener('click', renderProjects);
+  $('#pesave').addEventListener('click', async () => {
+    const checked = [...el.querySelectorAll('.pe-chk:checked')].map(c => +c.dataset.id);
+    const wasThis = evs.filter(e => e.project_id === p.id).map(e => e.id);
+    const toAssign = checked.filter(id => !wasThis.includes(id));
+    const toUnassign = wasThis.filter(id => !checked.includes(id));
+    if (toAssign.length) await api('/api/projects/' + p.id + '/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event_ids: toAssign }) });
+    if (toUnassign.length) await api('/api/projects/none/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event_ids: toUnassign }) });
+    toast(`ผูก ${toAssign.length} · เอาออก ${toUnassign.length} กิจกรรม`); renderProjects();
   });
 }
 
