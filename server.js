@@ -115,20 +115,21 @@ app.get('/api/events', (req, res) => {
   res.json(db.prepare('SELECT * FROM events ORDER BY week, id').all());
 });
 app.put('/api/events/:id', (req, res) => {
-  const { status, leads, sales_units, event_date } = req.body;
+  const { status, leads, sales_units, event_date, test_ride, type, tier } = req.body;
   const cur = db.prepare('SELECT * FROM events WHERE id=?').get(req.params.id);
   if (!cur) return res.status(404).json({ error: 'not found' });
-  db.prepare('UPDATE events SET status=?, leads=?, sales_units=?, event_date=? WHERE id=?')
-    .run(status ?? cur.status, leads ?? cur.leads, sales_units ?? cur.sales_units,
-         event_date ?? cur.event_date, req.params.id);
+  db.prepare('UPDATE events SET status=?, leads=?, sales_units=?, event_date=?, test_ride=?, type=?, tier=? WHERE id=?')
+    .run(status ?? cur.status, leads ?? cur.leads, sales_units ?? cur.sales_units, event_date ?? cur.event_date,
+         test_ride ?? cur.test_ride, type ?? cur.type, tier ?? cur.tier, req.params.id);
   res.json(db.prepare('SELECT * FROM events WHERE id=?').get(req.params.id));
 });
 app.post('/api/events', (req, res) => {
   const b = req.body;
   const nextId = (db.prepare('SELECT MAX(id) m FROM events').get().m || 0) + 1;
-  db.prepare(`INSERT INTO events (id,dealer_code,dealer_name,province,week,event_date,phase,status,budget,leads,sales_units)
-    VALUES (?,?,?,?,?,?,?,?,?,0,0)`).run(nextId, b.dealer_code||'', b.dealer_name||'', b.province||'',
-    b.week||0, b.event_date||'', b.phase||'ขยายผล', b.status||'planned', b.budget||20000);
+  db.prepare(`INSERT INTO events (id,dealer_code,dealer_name,province,week,event_date,phase,status,budget,leads,sales_units,type,tier,test_ride)
+    VALUES (?,?,?,?,?,?,?,?,?,0,0,?,?,0)`).run(nextId, b.dealer_code||'', b.dealer_name||'', b.province||'',
+    b.week||0, b.event_date||'', b.phase||'ขยายผล', b.status||'planned', b.budget||20000,
+    b.type||'activation', b.tier||'');
   res.json(db.prepare('SELECT * FROM events WHERE id=?').get(nextId));
 });
 app.delete('/api/events/:id', (req, res) => {
@@ -184,20 +185,34 @@ app.post('/api/posm/:code/checkin', (req, res) => {
   res.json(posmRow(req.params.code));
 });
 app.put('/api/posm/:code', (req, res) => {
-  const { qty, condition, location, status, min_stock, unit_value } = req.body;
+  const { qty, condition, location, status, min_stock, unit_value, std_a, std_b } = req.body;
   const cur = db.prepare('SELECT * FROM posm WHERE code=?').get(req.params.code);
   if (!cur) return res.status(404).json({ error: 'not found' });
-  db.prepare('UPDATE posm SET qty=?, condition=?, location=?, status=?, min_stock=?, unit_value=? WHERE code=?')
+  db.prepare('UPDATE posm SET qty=?, condition=?, location=?, status=?, min_stock=?, unit_value=?, std_a=?, std_b=? WHERE code=?')
     .run(qty ?? cur.qty, condition ?? cur.condition, location ?? cur.location, status ?? cur.status,
-         min_stock ?? cur.min_stock, unit_value ?? cur.unit_value, req.params.code);
+         min_stock ?? cur.min_stock, unit_value ?? cur.unit_value, std_a ?? cur.std_a, std_b ?? cur.std_b, req.params.code);
   res.json(posmRow(req.params.code));
 });
 app.post('/api/posm', (req, res) => {
   const b = req.body;
-  db.prepare(`INSERT OR REPLACE INTO posm (code,name,type,qty,condition,location,status,min_stock,unit_value)
-    VALUES (?,?,?,?,?,?,?,?,?)`).run(b.code, b.name||'', b.type||'ใช้ซ้ำ', b.qty||0,
-    b.condition||'ดี', b.location||'คลังกลาง', b.status||'available', b.min_stock||0, b.unit_value||0);
+  db.prepare(`INSERT OR REPLACE INTO posm (code,name,type,qty,condition,location,status,min_stock,unit_value,std_a,std_b)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(b.code, b.name||'', b.type||'ใช้ซ้ำ', b.qty||0,
+    b.condition||'ดี', b.location||'คลังกลาง', b.status||'available', b.min_stock||0, b.unit_value||0, b.std_a||0, b.std_b||0);
   res.json(posmRow(b.code));
+});
+// load the retail-plan standard POSM kit (Table 15 of the plan)
+app.post('/api/posm/load-standard', requireAdmin, (req, res) => {
+  const KIT = [
+    ['ST-01','ป้ายหน้าร้าน / Logo','ใช้ซ้ำ',1,0], ['ST-02','ธงหน้าร้าน','ใช้ซ้ำ',4,2],
+    ['ST-03','ป้ายโปรโมชั่นภายนอก','ใช้ซ้ำ',2,1], ['ST-04','ป้ายจุดทดลองขับ','ใช้ซ้ำ',1,0],
+    ['ST-05','เต็นท์กิจกรรม','ใช้ซ้ำ',2,0], ['ST-06','โปสเตอร์ภาพรวมสินค้า 8 รุ่น','สิ้นเปลือง',2,1],
+    ['ST-07','แผ่นพับสินค้า (ต่อรุ่น)','สิ้นเปลือง',30,15], ['ST-08','ฉากถ่ายภาพส่งมอบรถ','ใช้ซ้ำ',1,0],
+  ];
+  const up = db.prepare(`INSERT INTO posm (code,name,type,qty,condition,location,status,min_stock,unit_value,std_a,std_b)
+    VALUES (?,?,?,0,'ดี','คลังกลาง','available',0,0,?,?)
+    ON CONFLICT(code) DO UPDATE SET name=excluded.name, std_a=excluded.std_a, std_b=excluded.std_b`);
+  KIT.forEach(([code,name,type,a,b]) => up.run(code,name,type,a,b));
+  res.json({ ok: true, added: KIT.length });
 });
 app.delete('/api/posm/:code', (req, res) => {
   db.prepare('DELETE FROM posm WHERE code=?').run(req.params.code);

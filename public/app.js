@@ -173,13 +173,15 @@ async function renderEvents() {
   const totBudget = eventCache.reduce((s,e)=>s+e.budget,0);
   const done = eventCache.filter(e=>e.status==='done').length;
   const leads = eventCache.reduce((s,e)=>s+e.leads,0);
+  const testRides = eventCache.reduce((s,e)=>s+(e.test_ride||0),0);
   const sales = eventCache.reduce((s,e)=>s+e.sales_units,0);
   el.innerHTML = `
   <div class="kpis">
     <div class="kpi"><div class="l">Event ทั้งหมด</div><div class="v">${eventCache.length}</div><div class="s">${done} จัดแล้ว</div></div>
-    <div class="kpi"><div class="l">งบรวม</div><div class="v">${baht(totBudget)}</div><div class="s">บาท</div></div>
     <div class="kpi"><div class="l">Lead รวม</div><div class="v" style="color:#00897B">${leads}</div><div class="s">ราย</div></div>
+    <div class="kpi"><div class="l">Test Ride รวม</div><div class="v" style="color:#00897B">${testRides}</div><div class="s">ครั้ง</div></div>
     <div class="kpi"><div class="l">ปิดการขาย</div><div class="v" style="color:#6A1B9A">${sales}</div><div class="s">คัน</div></div>
+    <div class="kpi"><div class="l">Conversion</div><div class="v" style="color:#1565C0">${leads?Math.round(100*sales/leads):0}%</div><div class="s">ขาย ÷ Lead</div></div>
   </div>
   <div class="card">
     <div class="toolbar"><h2 style="margin:0">🎪 ตารางจัด Event</h2><span class="muted">แก้สถานะ/กรอกผลได้</span>
@@ -189,40 +191,46 @@ async function renderEvents() {
     <div class="scroll"><table id="etable"></table></div></div>`;
   $('#eexport').addEventListener('click', () => exportCSV('events.csv',
     [{key:'week',label:'สัปดาห์'},{key:'event_date',label:'วันที่'},{key:'dealer_code',label:'รหัส'},
-     {key:'dealer_name',label:'สาขา'},{key:'province',label:'จังหวัด'},{key:'phase',label:'ระยะ'},
-     {key:'status',label:'สถานะ'},{key:'budget',label:'งบ'},{key:'leads',label:'Lead'},{key:'sales_units',label:'ขาย(คัน)'}], eventCache));
+     {key:'dealer_name',label:'สาขา'},{key:'province',label:'จังหวัด'},{key:'type',label:'ประเภท'},{key:'tier',label:'ระดับ'},
+     {key:'status',label:'สถานะ'},{key:'budget',label:'งบ'},{key:'leads',label:'Lead'},{key:'test_ride',label:'TestRide'},{key:'sales_units',label:'ขาย(คัน)'}], eventCache));
   $('#eadd').addEventListener('click', async () => {
     const dealer_name = prompt('ชื่อสาขา:'); if (!dealer_name) return;
     const province = prompt('จังหวัด:') || '';
+    const type = (prompt('ประเภทงาน (activation=กิจกรรมหน้าร้าน / training=อบรม / testride=ทดลองขับ):', 'activation') || 'activation').trim();
+    const tier = (prompt('ระดับร้าน (A / B):', 'A') || '').trim().toUpperCase();
     const week = +(prompt('สัปดาห์ (1-12):') || 0);
     const event_date = prompt('วันที่ (เช่น 5 ต.ค. 69):') || '';
-    const r = await api('/api/events', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ dealer_name, province, week, event_date, phase:'ขยายผล' }) });
+    await api('/api/events', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dealer_name, province, week, event_date, type, tier, phase:'ขยายผล' }) });
     toast('เพิ่ม Event แล้ว'); renderEvents();
   });
   drawEvents();
 }
+const EV_TYPE = { activation:'กิจกรรมหน้าร้าน', training:'อบรม', testride:'ทดลองขับ', other:'อื่นๆ' };
 function drawEvents() {
   const st = ['planned','confirmed','done','cancelled'];
   const stLabel = {planned:'วางแผน',confirmed:'ยืนยันแล้ว',done:'จัดเสร็จ',cancelled:'ยกเลิก'};
+  const types = Object.keys(EV_TYPE);
   $('#etable').innerHTML =
-    `<tr><th>W</th><th>วันที่</th><th>สาขา</th><th>จังหวัด</th><th>ระยะ</th><th class="num">งบ</th>
-      <th>สถานะ</th><th class="num">Lead</th><th class="num">ขาย(คัน)</th><th></th></tr>` +
+    `<tr><th>W</th><th>วันที่</th><th>สาขา</th><th>ประเภท</th><th>ระดับ</th><th>สถานะ</th>
+      <th class="num">Lead</th><th class="num">Test</th><th class="num">ขาย</th><th class="num">Conv.</th><th></th></tr>` +
     eventCache.map(e => `<tr data-id="${e.id}">
       <td>W${e.week}</td><td>${esc(e.event_date)}</td>
-      <td>${esc(e.dealer_name)}<small class="sub">${e.dealer_code}</small></td>
-      <td>${esc(e.province)}</td>
-      <td><span class="badge ${e.phase==='นำร่อง'?'b-out':'b-reuse'}">${esc(e.phase)}</span></td>
-      <td class="num">${baht(e.budget)}</td>
-      <td><select class="cell f-st">${st.map(s=>`<option value="${s}" ${e.status===s?'selected':''}>${stLabel[s]}</option>`).join('')}</select></td>
-      <td class="num"><input class="cell f-lead" style="width:60px" type="number" min="0" value="${e.leads}"></td>
-      <td class="num"><input class="cell f-sales" style="width:60px" type="number" min="0" value="${e.sales_units}"></td>
+      <td>${esc(e.dealer_name)}<small class="sub">${e.dealer_code||''} · ${esc(e.province)}</small></td>
+      <td><select class="cell f-type" style="width:120px">${types.map(t=>`<option value="${t}" ${(e.type||'activation')===t?'selected':''}>${EV_TYPE[t]}</option>`).join('')}</select></td>
+      <td><select class="cell f-tier" style="width:52px"><option value="" ${!e.tier?'selected':''}>-</option><option value="A" ${e.tier==='A'?'selected':''}>A</option><option value="B" ${e.tier==='B'?'selected':''}>B</option></select></td>
+      <td><select class="cell f-st" style="width:90px">${st.map(s=>`<option value="${s}" ${e.status===s?'selected':''}>${stLabel[s]}</option>`).join('')}</select></td>
+      <td class="num"><input class="cell f-lead" style="width:52px" type="number" min="0" value="${e.leads}"></td>
+      <td class="num"><input class="cell f-test" style="width:52px" type="number" min="0" value="${e.test_ride||0}"></td>
+      <td class="num"><input class="cell f-sales" style="width:52px" type="number" min="0" value="${e.sales_units}"></td>
+      <td class="num"><b>${e.leads?Math.round(100*e.sales_units/e.leads):0}%</b></td>
       <td style="white-space:nowrap"><button class="btn sm f-save">บันทึก</button>
         <button class="btn sm del danger f-del">ลบ</button></td></tr>`).join('');
   $('#etable').querySelectorAll('.f-save').forEach(b => b.addEventListener('click', async e => {
     const tr = e.target.closest('tr'); const id = tr.dataset.id;
-    const body = { status: tr.querySelector('.f-st').value,
-      leads: +tr.querySelector('.f-lead').value, sales_units: +tr.querySelector('.f-sales').value };
+    const body = { status: tr.querySelector('.f-st').value, type: tr.querySelector('.f-type').value,
+      tier: tr.querySelector('.f-tier').value, leads: +tr.querySelector('.f-lead').value,
+      test_ride: +tr.querySelector('.f-test').value, sales_units: +tr.querySelector('.f-sales').value };
     const upd = await api('/api/events/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const i = eventCache.findIndex(x => x.id == id); eventCache[i] = upd;
     toast('บันทึก Event แล้ว'); renderEvents();
@@ -258,15 +266,23 @@ async function renderPosm() {
   </div>
   ${alerts.length ? `<div class="card" style="border-left:4px solid #e53935"><b>แจ้งเตือน</b><div style="margin-top:8px;font-size:13px;line-height:1.9">${alerts.join('<br>')}</div></div>`:''}
   <div class="card">
-    <div class="toolbar"><h2 style="margin:0">📦 คลัง POSM</h2><span class="muted">เบิก-คืน / ผูกกับ Event / แจ้งเตือนสต็อก</span>
+    <div class="toolbar"><h2 style="margin:0">📦 คลัง POSM</h2><span class="muted">เบิก-คืน · ชุดมาตรฐาน A/B (ตามแผน) · แจ้งเตือนสต็อก</span>
       <span class="spacer"></span>
+      ${currentUser && currentUser.role==='admin' ? '<button class="btn ghost" id="ploadstd">📥 โหลดชุดมาตรฐานตามแผน</button>' : ''}
       <button class="btn ghost" id="padd">➕ เพิ่มรายการ</button>
       <button class="btn ghost" id="pexport">⬇ Export CSV</button></div>
     <div class="scroll"><table id="ptable"></table></div></div>
   <div id="phist"></div>`;
+  const loadstd = $('#ploadstd');
+  if (loadstd) loadstd.addEventListener('click', async () => {
+    if (!confirm('โหลดชุดสื่อมาตรฐานตามแผน Boss (ตาราง 15) เข้าคลัง? รายการที่มีอยู่จะอัปเดตค่ามาตรฐาน A/B')) return;
+    const d = await api('/api/posm/load-standard', { method: 'POST' });
+    if (d.ok) { toast('โหลดชุดมาตรฐาน ' + d.added + ' รายการแล้ว'); renderPosm(); }
+  });
   $('#pexport').addEventListener('click', () => exportCSV('posm.csv',
     [{key:'code',label:'รหัส'},{key:'name',label:'รายการ'},{key:'type',label:'ประเภท'},
-     {key:'qty',label:'จำนวน'},{key:'min_stock',label:'ขั้นต่ำ'},{key:'unit_value',label:'มูลค่า/ชิ้น'},
+     {key:'qty',label:'จำนวน'},{key:'std_a',label:'มาตรฐาน A'},{key:'std_b',label:'มาตรฐาน B'},
+     {key:'min_stock',label:'ขั้นต่ำ'},{key:'unit_value',label:'มูลค่า/ชิ้น'},
      {key:'condition',label:'สภาพ'},{key:'location',label:'ที่อยู่'},{key:'status',label:'สถานะ'}], posmCache));
   $('#padd').addEventListener('click', async () => {
     const code = prompt('รหัส (เช่น PM-08):'); if (!code) return;
@@ -282,8 +298,9 @@ async function renderPosm() {
 }
 function drawPosm() {
   $('#ptable').innerHTML =
-    `<tr><th>รหัส</th><th>รายการ</th><th>ประเภท</th><th class="num">จำนวน</th><th class="num">ขั้นต่ำ</th>
-      <th class="num">มูลค่า/ชิ้น</th><th>สภาพ</th><th>ที่อยู่ปัจจุบัน</th><th>สถานะ</th><th>จัดการ</th></tr>` +
+    `<tr><th>รหัส</th><th>รายการ</th><th>ประเภท</th><th class="num">จำนวน</th>
+      <th class="num" title="มาตรฐานร้าน A">มฐ.A</th><th class="num" title="มาตรฐานร้าน B">มฐ.B</th>
+      <th class="num">ขั้นต่ำ</th><th class="num">มูลค่า</th><th>สภาพ</th><th>ที่อยู่ปัจจุบัน</th><th>สถานะ</th><th>จัดการ</th></tr>` +
     posmCache.map(p => {
       const rowStyle = p.low ? 'background:#fff5f5' : (p.overdue ? 'background:#fff8f0' : '');
       const stBadge = p.status==='out' ? `<span class="badge b-out">เบิกออก</span>`
@@ -296,9 +313,11 @@ function drawPosm() {
       return `<tr data-code="${p.code}" style="${rowStyle}">
         <td>${p.code}</td><td>${esc(p.name)}${moveInfo}</td>
         <td><span class="badge ${p.type==='ใช้ซ้ำ'?'b-reuse':'b-cons'}">${esc(p.type)}</span></td>
-        <td class="num"><input class="cell f-qty" style="width:64px" type="number" value="${p.qty}"></td>
-        <td class="num"><input class="cell f-min" style="width:56px" type="number" value="${p.min_stock||0}">${p.low?' ⚠️':''}</td>
-        <td class="num"><input class="cell f-val" style="width:64px" type="number" value="${p.unit_value||0}"></td>
+        <td class="num"><input class="cell f-qty" style="width:56px" type="number" value="${p.qty}"></td>
+        <td class="num"><input class="cell f-stda" style="width:46px" type="number" value="${p.std_a||0}"></td>
+        <td class="num"><input class="cell f-stdb" style="width:46px" type="number" value="${p.std_b||0}"></td>
+        <td class="num"><input class="cell f-min" style="width:50px" type="number" value="${p.min_stock||0}">${p.low?' ⚠️':''}</td>
+        <td class="num"><input class="cell f-val" style="width:56px" type="number" value="${p.unit_value||0}"></td>
         <td><input class="cell f-cond" style="width:70px" value="${esc(p.condition)}"></td>
         <td>${esc(p.location)}</td>
         <td>${stBadge}</td>
@@ -311,7 +330,8 @@ function drawPosm() {
   $('#ptable').querySelectorAll('.f-save').forEach(b => b.addEventListener('click', async e => {
     const tr = e.target.closest('tr'); const code = tr.dataset.code;
     const body = { qty:+tr.querySelector('.f-qty').value, min_stock:+tr.querySelector('.f-min').value,
-      unit_value:+tr.querySelector('.f-val').value, condition:tr.querySelector('.f-cond').value };
+      unit_value:+tr.querySelector('.f-val').value, condition:tr.querySelector('.f-cond').value,
+      std_a:+tr.querySelector('.f-stda').value, std_b:+tr.querySelector('.f-stdb').value };
     await api('/api/posm/' + code, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     toast('บันทึก ' + code + ' แล้ว'); renderPosm();
   }));

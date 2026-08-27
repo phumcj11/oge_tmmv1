@@ -61,6 +61,13 @@ function init() {
   const cols = db.prepare("PRAGMA table_info(posm)").all().map(c => c.name);
   if (!cols.includes('min_stock')) db.exec('ALTER TABLE posm ADD COLUMN min_stock INTEGER DEFAULT 0');
   if (!cols.includes('unit_value')) db.exec('ALTER TABLE posm ADD COLUMN unit_value INTEGER DEFAULT 0');
+  if (!cols.includes('std_a')) db.exec('ALTER TABLE posm ADD COLUMN std_a INTEGER DEFAULT 0');
+  if (!cols.includes('std_b')) db.exec('ALTER TABLE posm ADD COLUMN std_b INTEGER DEFAULT 0');
+  // events: retail-plan fields (event type, store tier, test rides)
+  const ecols = db.prepare("PRAGMA table_info(events)").all().map(c => c.name);
+  if (!ecols.includes('type')) db.exec("ALTER TABLE events ADD COLUMN type TEXT DEFAULT 'activation'");
+  if (!ecols.includes('tier')) db.exec("ALTER TABLE events ADD COLUMN tier TEXT DEFAULT ''");
+  if (!ecols.includes('test_ride')) db.exec('ALTER TABLE events ADD COLUMN test_ride INTEGER DEFAULT 0');
   // create a default admin on first run (persists across data reseeds)
   if (db.prepare('SELECT COUNT(*) c FROM users').get().c === 0) {
     const salt = crypto.randomBytes(16).toString('hex');
