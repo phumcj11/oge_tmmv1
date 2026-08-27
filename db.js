@@ -85,6 +85,7 @@ function init() {
     target_sellout: "INTEGER DEFAULT 0", target_lead: "INTEGER DEFAULT 0",
     target_testride: "INTEGER DEFAULT 0", target_training: "INTEGER DEFAULT 0",
     act_training: "INTEGER DEFAULT 0",
+    assignees: "TEXT DEFAULT ''", prep: "TEXT DEFAULT '[]'",
   };
   for (const [c, def] of Object.entries(eAdd))
     if (!ecols.includes(c)) db.exec(`ALTER TABLE events ADD COLUMN ${c} ${def}`);

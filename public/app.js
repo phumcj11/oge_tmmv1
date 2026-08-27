@@ -393,6 +393,11 @@ const achvColor = p => p >= 100 ? '#2e7d32' : p >= 60 ? '#ef6c00' : '#e53935';
 async function renderEvents() {
   const [ev, ov, dl] = await Promise.all([api('/api/events'), api('/api/overview'), api('/api/dealers')]);
   eventCache = ev; eventProducts = ov.products.map(p => p.model); dealerCache = dl;
+  if (eventView === 'team') {
+    const [st, ac] = await Promise.all([api('/api/staff').catch(() => []), api('/api/attachments/counts').catch(() => [])]);
+    staffMap = Object.fromEntries((st || []).map(s => [s.username, s.name]));
+    attachInfo = Object.fromEntries((ac || []).map(a => [a.event_id, a]));
+  }
   const el = $('#events');
   const sum = (k) => eventCache.reduce((s, e) => s + (+e[k] || 0), 0);
   const tgt = { sellout: sum('target_sellout'), lead: sum('target_lead'), test: sum('target_testride'), train: sum('target_training') };
@@ -407,11 +412,11 @@ async function renderEvents() {
     ${kpi('Training (เป้า vs ผล)', act.train, tgt.train, 'คน')}
   </div>
   <div class="card"><div class="toolbar"><h2 style="margin:0">🎪 กิจกรรม ARM</h2>
-    <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button><button class="vt ${eventView==='board'?'on':''}" id="vboard">🎯 Board</button><button class="vt ${eventView==='performance'?'on':''}" id="vperf">📊 Performance</button></div>
+    <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button><button class="vt ${eventView==='board'?'on':''}" id="vboard">🎯 Board</button><button class="vt ${eventView==='performance'?'on':''}" id="vperf">📊 Performance</button><button class="vt ${eventView==='team'?'on':''}" id="vteam">👷 ติดตามทีม</button></div>
     <span class="spacer"></span>
     <button class="btn editor-only" id="enew">➕ กิจกรรมใหม่</button>
     <button class="btn ghost" id="eexport">⬇ Export CSV</button></div>
-    ${eventView==='calendar' ? buildCalendar() : eventView==='board' ? buildBoard() : eventView==='performance' ? buildPerformance() : `<div class="scroll"><table id="etable">
+    ${eventView==='calendar' ? buildCalendar() : eventView==='board' ? buildBoard() : eventView==='performance' ? buildPerformance() : eventView==='team' ? buildTeam() : `<div class="scroll"><table id="etable">
       <tr><th>กิจกรรม</th><th>ร้าน/สาขา</th><th>ประเภท</th><th>ระดับ</th><th>วันที่</th><th>สถานะ</th>
         <th class="num">Sell-out</th><th class="num">Lead</th><th class="num">Test</th><th class="num">Train</th><th></th></tr>
       ${eventCache.length ? eventCache.map(e => {
@@ -432,8 +437,10 @@ async function renderEvents() {
   $('#vcal').addEventListener('click', () => { eventView='calendar'; renderEvents(); });
   $('#vboard').addEventListener('click', () => { eventView='board'; renderEvents(); });
   $('#vperf').addEventListener('click', () => { eventView='performance'; renderEvents(); });
+  $('#vteam').addEventListener('click', () => { eventView='team'; renderEvents(); });
   if (eventView==='calendar') wireCalendar();
   if (eventView==='board') wireBoard();
+  if (eventView==='team') wireTeam();
   const enew = $('#enew');
   if (enew) enew.addEventListener('click', () => openEventEditor(null));
   $('#eexport').addEventListener('click', () => exportCSV('events.csv',
@@ -442,9 +449,9 @@ async function renderEvents() {
      {key:'budget',label:'งบ'},{key:'target_sellout',label:'เป้าSellout'},{key:'sales_units',label:'ผลSellout'},
      {key:'target_lead',label:'เป้าLead'},{key:'leads',label:'ผลLead'},{key:'target_testride',label:'เป้าTest'},{key:'test_ride',label:'ผลTest'},
      {key:'target_training',label:'เป้าTrain'},{key:'act_training',label:'ผลTrain'}], eventCache));
-  $('#etable').querySelectorAll('.f-edit').forEach(b => b.addEventListener('click', e =>
+  $('#etable')?.querySelectorAll('.f-edit').forEach(b => b.addEventListener('click', e =>
     openEventEditor(eventCache.find(x => x.id == e.target.closest('tr').dataset.id))));
-  $('#etable').querySelectorAll('.f-del').forEach(b => b.addEventListener('click', async e => {
+  $('#etable')?.querySelectorAll('.f-del').forEach(b => b.addEventListener('click', async e => {
     const id = e.target.closest('tr').dataset.id;
     if (!confirm('ลบกิจกรรมนี้?')) return;
     await del('/api/events/' + id); toast('ลบแล้ว'); renderEvents();
@@ -551,8 +558,84 @@ function buildPerformance() {
     <div class="perf-sec"><h4>🏷️ งานตามประเภท</h4>${Object.entries(byType).map(([t,v])=>bar(EV_TYPE[t]||t,v,maxTy,'#6A1B9A')).join('')}</div>
   </div>`;
 }
+// ---- Team Tracker: submission status of assigned work (Notion-style) ----
+let staffMap = {}, attachInfo = {};
+function teamState(e) {
+  const prep = e.prep || [], pdone = prep.filter(x => x.done).length;
+  const acts = (+e.sales_units||0)+(+e.leads||0)+(+e.test_ride||0)+(+e.act_training||0);
+  const photos = (attachInfo[e.id]||{}).n || 0;
+  const today = new Date().toISOString().slice(0,10);
+  let state, color;
+  if (e.status === 'done') { state = 'ส่งงานแล้ว'; color = '#2e7d32'; }
+  else if (pdone || acts || photos) { state = 'กำลังทำ'; color = '#b8860b'; }
+  else if (e.start_date && e.start_date < today) { state = 'เลยกำหนด·ยังไม่เริ่ม'; color = '#c62828'; }
+  else { state = 'รอเริ่ม'; color = '#8a94a0'; }
+  return { state, color, pdone, ptot: prep.length, acts, photos };
+}
+function buildTeam() {
+  const assigned = eventCache.filter(e => (e.assignees||'').trim());
+  const sum = { done:0, doing:0, wait:0, late:0 };
+  assigned.forEach(e => { const s = teamState(e).state; if (s==='ส่งงานแล้ว') sum.done++; else if (s==='กำลังทำ') sum.doing++; else if (s.startsWith('เลย')) sum.late++; else sum.wait++; });
+  const unassigned = eventCache.length - assigned.length;
+  const nm = u => staffMap[u] || u;
+  const cell = (a,t) => `${a||0}<small style="color:#98a2b3">/${t||0}</small>`;
+  const rows = assigned.map(e => {
+    const t = teamState(e);
+    const names = (e.assignees||'').split(',').map(s=>s.trim()).filter(Boolean).map(u=>`<span class="asg-tag">${esc(nm(u))}</span>`).join(' ') || '<span class="muted">-</span>';
+    const info = attachInfo[e.id];
+    return `<tr data-id="${e.id}">
+      <td><b class="lnk f-edit" style="color:#2E9E1E;cursor:pointer">${esc(e.activity_name||'(ไม่มีชื่อ)')}</b><small class="sub">${esc(e.dealer_name||e.company||'')}${e.start_date?' · '+esc(e.start_date):''}</small></td>
+      <td>${names}</td>
+      <td><span class="sbadge" style="background:${t.color}22;color:${t.color}">${t.state}</span></td>
+      <td style="min-width:120px">${t.ptot?`<div class="stprep-bar" style="margin-bottom:3px"><i style="width:${Math.round(t.pdone/t.ptot*100)}%"></i></div><small class="sub">${t.pdone}/${t.ptot} ขั้น</small>`:'<small class="muted">-</small>'}</td>
+      <td class="num">${cell(e.sales_units,e.target_sellout)}</td>
+      <td class="num">${cell(e.leads,e.target_lead)}</td>
+      <td class="num">${cell(e.test_ride,e.target_testride)}</td>
+      <td class="num">📸 ${t.photos}${info&&info.last?`<small class="sub">${esc((info.last||'').slice(0,10))}</small>`:''}</td>
+      <td><button class="btn sm f-edit">เปิด</button></td></tr>`;
+  }).join('');
+  return `
+  <div class="team-sum">
+    <div class="ts-card"><b>${assigned.length}</b><span>งานที่มอบหมาย</span></div>
+    <div class="ts-card ok"><b>${sum.done}</b><span>ส่งงานแล้ว</span></div>
+    <div class="ts-card doing"><b>${sum.doing}</b><span>กำลังทำ</span></div>
+    <div class="ts-card wait"><b>${sum.wait}</b><span>รอเริ่ม</span></div>
+    <div class="ts-card late"><b>${sum.late}</b><span>เลยกำหนด</span></div>
+  </div>
+  ${unassigned?`<div class="muted" style="margin:0 2px 10px">⚠️ อีก ${unassigned} กิจกรรมยังไม่ได้มอบหมายพนักงาน</div>`:''}
+  ${assigned.length?`<div class="scroll"><table id="teamtable">
+    <tr><th>กิจกรรม</th><th>ผู้รับผิดชอบ</th><th>สถานะส่งงาน</th><th>เตรียมงาน</th><th class="num">Sell-out</th><th class="num">Lead</th><th class="num">Test</th><th>รูป/อัปเดต</th><th></th></tr>
+    ${rows}</table></div>`
+    :'<div class="card muted" style="text-align:center;padding:30px">ยังไม่มีการมอบหมายงานให้พนักงาน<br><small>เปิดกิจกรรม → ส่วน “มอบหมายพนักงาน” เพื่อเริ่ม</small></div>'}`;
+}
+function wireTeam() {
+  $('#teamtable')?.querySelectorAll('.f-edit').forEach(b => b.addEventListener('click', e =>
+    openEventEditor(eventCache.find(x => x.id == e.target.closest('tr').dataset.id))));
+}
 
-let evBudget = [], evStock = [], evAction = [], evManpower = [];
+let evBudget = [], evStock = [], evAction = [], evManpower = [], evAssignees = [], evPrep = [];
+const PREP_TEMPLATE = ['รับของ Event', 'ขนส่ง/เดินทางถึงหน้างาน', 'ติดตั้งบูธ/POSM', 'จัดร้าน/จัดโชว์รถเสร็จ', 'เก็บงาน/คืนของ'];
+async function loadAssignees(readonly) {
+  const box = $('#assigneeBox'); if (!box) return;
+  let staff = [];
+  try { staff = await api('/api/staff'); } catch (_) {}
+  if (!staff.length) { box.innerHTML = '<span class="muted">ยังไม่มีบัญชีพนักงาน (role=staff) — เพิ่มที่เมนู 👤 ผู้ใช้</span>'; return; }
+  box.innerHTML = staff.map(s => `<label class="chk"><input type="checkbox" class="asg" value="${esc(s.username)}" ${evAssignees.includes(s.username) ? 'checked' : ''} ${readonly ? 'disabled' : ''}> ${esc(s.name)} <small>@${esc(s.username)}</small></label>`).join('');
+  box.querySelectorAll('.asg').forEach(c => c.addEventListener('change', () => {
+    evAssignees = [...box.querySelectorAll('.asg:checked')].map(x => x.value);
+  }));
+}
+function drawPrepEdit(readonly) {
+  const box = $('#prepEditBox'); if (!box) return;
+  box.innerHTML = `${evPrep.map((p, i) => `<div class="prep-row">
+      <input class="prepin" data-i="${i}" value="${esc(p.label)}" ${readonly ? 'disabled' : ''}>
+      ${readonly ? '' : `<button class="btn sm del danger" data-del="${i}">✕</button>`}</div>`).join('')}
+    ${readonly ? '' : '<button class="btn sm ghost" id="prepadd">➕ เพิ่มขั้นตอน</button> <button class="btn sm ghost" id="preptmpl">📥 template</button>'}`;
+  box.querySelectorAll('.prepin').forEach(inp => inp.addEventListener('input', e => { evPrep[e.target.dataset.i].label = e.target.value; }));
+  box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => { evPrep.splice(+e.target.dataset.del, 1); drawPrepEdit(readonly); }));
+  $('#prepadd')?.addEventListener('click', () => { evPrep.push({ label: '', done: false }); drawPrepEdit(readonly); });
+  $('#preptmpl')?.addEventListener('click', () => { if (!evPrep.length || confirm('เพิ่ม template?')) { PREP_TEMPLATE.forEach(l => evPrep.push({ label: l, done: false })); drawPrepEdit(readonly); } });
+}
 function openEventEditor(ev) {
   const readonly = currentUser.role === 'viewer';
   ev = ev || {};
@@ -593,6 +676,12 @@ function openEventEditor(ev) {
       ${g('e_support','ทีมสนับสนุน',ev.support_team)}
     </div>
 
+    <h3 class="sec">👷 มอบหมายพนักงาน & ขั้นตอนเตรียมงาน</h3>
+    <div class="fgrid" style="grid-template-columns:1fr 1fr">
+      <div class="fg"><label>มอบหมายให้พนักงานหน้างาน</label><div id="assigneeBox" class="assignbox"><span class="muted">กำลังโหลด...</span></div></div>
+      <div class="fg"><label>ขั้นตอนเตรียมงาน (checklist ของพนักงาน)</label><div id="prepEditBox"></div></div>
+    </div>
+
     <h3 class="sec">🎯 เป้าหมาย vs ผลจริง</h3>
     <div class="scroll"><table class="mini">
       <tr><th></th><th class="num">Sell-out (คัน)</th><th class="num">Lead (ราย)</th><th class="num">Test Ride (คน)</th><th class="num">Training (คน)</th></tr>
@@ -625,6 +714,9 @@ function openEventEditor(ev) {
     <div id="attachBox"></div>
   </div>`;
   drawBudget(readonly); drawStock(readonly); drawAction(readonly); drawManpower(readonly); drawAttachments(ev.id, readonly);
+  evAssignees = (ev.assignees || '').split(',').map(s => s.trim()).filter(Boolean);
+  evPrep = Array.isArray(ev.prep) ? ev.prep.map(x => ({ ...x })) : [];
+  loadAssignees(readonly); drawPrepEdit(readonly);
   $('#ecancel').addEventListener('click', renderEvents);
   const save = $('#esave');
   if (save) save.addEventListener('click', () => saveEvent(ev.id));
@@ -756,6 +848,7 @@ async function saveEvent(id) {
     sales_units:+$('#a_sellout').value, leads:+$('#a_lead').value, test_ride:+$('#a_test').value, act_training:+$('#a_train').value,
     bank: $('#e_bank').value, bank_account: $('#e_acct').value,
     budget_lines: evBudget, stock_prep: evStock, action_plan: evAction, manpower: evManpower,
+    assignees: evAssignees.join(','), prep: evPrep.filter(p => (p.label || '').trim()),
   };
   const d = id
     ? await api('/api/events/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
@@ -1128,14 +1221,105 @@ async function renderUsers() {
     if (d.ok) { toast('ลบ ' + username + ' แล้ว'); renderUsers(); }
   }));
 }
+// ================= STAFF (field worker) view =================
+function staffShow(id) { document.querySelectorAll('main .view').forEach(v => v.classList.add('hidden')); $('#' + id).classList.remove('hidden'); }
+async function renderStaff() {
+  staffShow('staff');
+  const el = $('#staff');
+  el.innerHTML = '<div class="staff-wrap"><div class="muted">กำลังโหลดงานของคุณ...</div></div>';
+  const list = await api('/api/my/events');
+  const today = new Date().toISOString().slice(0, 10);
+  const sBadge = s => `<span class="sbadge s-${s}">${EV_STATUS[s] || s}</span>`;
+  const prepPct = e => { const p = e.prep || []; return p.length ? Math.round(p.filter(x => x.done).length / p.length * 100) : 0; };
+  const card = e => {
+    const done = (e.prep || []).filter(x => x.done).length, tot = (e.prep || []).length;
+    const late = e.start_date && e.start_date < today && e.status !== 'done';
+    return `<div class="stcard" data-id="${e.id}">
+      <div class="stcard-top">
+        <div class="stcard-title">${esc(e.activity_name || '(ไม่มีชื่อ)')}</div>
+        ${sBadge(e.status)}
+      </div>
+      <div class="stcard-meta">🏪 ${esc(e.dealer_name || '-')} · 📅 ${esc(e.start_date || e.event_date || '-')} ${late ? '<span class="late">เลยกำหนด</span>' : ''}</div>
+      ${tot ? `<div class="stprep"><div class="stprep-bar"><i style="width:${prepPct(e)}%"></i></div><small>เตรียมงาน ${done}/${tot}</small></div>` : ''}
+      <div class="stcard-go">แตะเพื่อส่งงาน →</div>
+    </div>`;
+  };
+  el.innerHTML = `<div class="staff-wrap">
+    <div class="staff-hd"><h2>👷 งานของฉัน</h2><span class="muted">สวัสดี ${esc(currentUser.name)}</span></div>
+    ${list.length ? `<div class="stgrid">${list.map(card).join('')}</div>`
+      : '<div class="card muted" style="text-align:center;padding:40px">ยังไม่มีงานที่ได้รับมอบหมาย<br><small>รอ TMM มอบหมายงานให้คุณ</small></div>'}
+  </div>`;
+  el.querySelectorAll('.stcard').forEach(c => c.addEventListener('click', () => openStaffSubmit(list.find(x => x.id == c.dataset.id))));
+}
+let stPrep = [];
+function openStaffSubmit(ev) {
+  stPrep = Array.isArray(ev.prep) ? ev.prep.map(x => ({ ...x })) : [];
+  const el = $('#staff');
+  const numRow = (id, label, val, target, unit) => `<div class="stnum">
+    <label>${label}</label>
+    <div class="stnum-in"><input id="${id}" type="number" min="0" value="${val || 0}"> <small>/ เป้า ${target || 0} ${unit}</small></div></div>`;
+  el.innerHTML = `<div class="staff-wrap">
+    <div class="staff-hd"><button class="btn ghost" id="stback">← กลับ</button></div>
+    <div class="card stform">
+      <h2 style="margin:0 0 4px">${esc(ev.activity_name || '(ไม่มีชื่อ)')}</h2>
+      <div class="muted" style="margin-bottom:14px">🏪 ${esc(ev.dealer_name || '-')} · 📅 ${esc(ev.start_date || ev.event_date || '-')}</div>
+
+      <h3 class="sec">✅ ขั้นตอนเตรียมงาน</h3>
+      <div id="stPrepBox"></div>
+
+      <h3 class="sec">📸 รูปหน้างาน / ไฟล์แนบ</h3>
+      <div id="attachBox"></div>
+
+      <h3 class="sec">📊 ผลจริง</h3>
+      <div class="stnums">
+        ${numRow('st_sell', 'Sell-out (ปิดการขาย)', ev.sales_units, ev.target_sellout, 'คัน')}
+        ${numRow('st_lead', 'Lead (ผู้สนใจ)', ev.leads, ev.target_lead, 'ราย')}
+        ${numRow('st_test', 'Test Ride (ทดลองขับ)', ev.test_ride, ev.target_testride, 'คน')}
+        ${numRow('st_train', 'Training (อบรม)', ev.act_training, ev.target_training, 'คน')}
+      </div>
+
+      <h3 class="sec">🚦 สถานะงาน</h3>
+      <div class="ststatus">${['planned', 'confirmed', 'done'].map(s =>
+        `<button class="stbtn ${ev.status === s ? 'on' : ''}" data-s="${s}">${EV_STATUS[s]}</button>`).join('')}</div>
+
+      <button class="btn stsave" id="stsave">💾 ส่งงาน / บันทึก</button>
+    </div>
+  </div>`;
+  let status = ev.status || 'planned';
+  drawStaffPrep();
+  drawAttachments(ev.id, false);
+  el.querySelector('#stback').addEventListener('click', renderStaff);
+  el.querySelectorAll('.stbtn').forEach(b => b.addEventListener('click', () => {
+    status = b.dataset.s; el.querySelectorAll('.stbtn').forEach(x => x.classList.toggle('on', x === b));
+  }));
+  el.querySelector('#stsave').addEventListener('click', async () => {
+    const body = {
+      status, prep: stPrep,
+      sales_units: +$('#st_sell').value, leads: +$('#st_lead').value,
+      test_ride: +$('#st_test').value, act_training: +$('#st_train').value,
+    };
+    const d = await api('/api/my/events/' + ev.id + '/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (d.id) { toast('ส่งงานเรียบร้อย ✓'); renderStaff(); }
+  });
+}
+function drawStaffPrep() {
+  const box = $('#stPrepBox'); if (!box) return;
+  box.innerHTML = stPrep.length ? stPrep.map((p, i) => `<label class="stprep-item ${p.done ? 'done' : ''}">
+      <input type="checkbox" data-i="${i}" ${p.done ? 'checked' : ''}> <span>${esc(p.label)}</span></label>`).join('')
+    : '<div class="muted">TMM ยังไม่ได้กำหนดขั้นตอนเตรียมงาน</div>';
+  box.querySelectorAll('input[type=checkbox]').forEach(c => c.addEventListener('change', e => {
+    stPrep[e.target.dataset.i].done = e.target.checked; drawStaffPrep();
+  }));
+}
 async function init() {
   let me;
   try { const r = await fetch('/api/me'); if (!r.ok) { location.href = '/login.html'; return; } me = await r.json(); }
   catch (_) { location.href = '/login.html'; return; }
   currentUser = me;
   document.body.classList.toggle('role-viewer', me.role === 'viewer');
-  if (me.role === 'admin') $('#usersTab').style.display = '';
   renderUserbox();
+  if (me.role === 'staff') { document.body.classList.add('role-staff'); $('#tabs').style.display = 'none'; renderStaff(); return; }
+  if (me.role === 'admin') $('#usersTab').style.display = '';
   render('dashboard');
 }
 init();

@@ -70,6 +70,25 @@ app.use((req, res, next) => {
     return res.status(403).json({ error: 'บัญชีนี้เป็นแบบดูอย่างเดียว (viewer) แก้ไขไม่ได้' });
   next();
 });
+// staff gate: field staff can only touch their own submission routes
+const STAFF_WRITE_OK = [
+  /^\/api\/logout$/, /^\/api\/password$/,
+  /^\/api\/my\/events\/\d+\/submit$/,
+  /^\/api\/events\/\d+\/attachments$/,   // upload — assignment verified in handler
+  /^\/api\/attachments\/\d+$/,           // delete own — verified in handler
+];
+app.use((req, res, next) => {
+  if (req.user.role === 'staff' && ['POST', 'PUT', 'DELETE'].includes(req.method)
+      && !STAFF_WRITE_OK.some(rx => rx.test(req.path)))
+    return res.status(403).json({ error: 'พนักงานหน้างานทำได้เฉพาะการส่งงานของตนเอง' });
+  next();
+});
+// helpers for assignment checks
+function eventAssignees(id) {
+  const r = db.prepare('SELECT assignees FROM events WHERE id=?').get(id);
+  return (r && r.assignees ? r.assignees : '').split(',').map(s => s.trim()).filter(Boolean);
+}
+function isAssigned(username, id) { return eventAssignees(id).includes(username); }
 function requireAdmin(req, res, next) {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ (admin)' });
   next();
@@ -174,8 +193,9 @@ app.get('/api/products', (req, res) => {
 const EVENT_FIELDS = ['dealer_code','dealer_name','province','week','event_date','phase','status','budget',
   'leads','sales_units','type','tier','test_ride','dept','activity_name','company','branch','customer_name',
   'customer_phone','start_date','end_date','duration_days','goal','owner','support_team','bank','bank_account',
-  'budget_lines','stock_prep','action_plan','manpower','target_sellout','target_lead','target_testride','target_training','act_training'];
-const EVENT_JSON = ['budget_lines', 'stock_prep', 'action_plan', 'manpower'];
+  'budget_lines','stock_prep','action_plan','manpower','target_sellout','target_lead','target_testride','target_training','act_training',
+  'assignees','prep'];
+const EVENT_JSON = ['budget_lines', 'stock_prep', 'action_plan', 'manpower', 'prep'];
 function eventRow(r) {
   if (!r) return r;
   EVENT_JSON.forEach(k => { try { r[k] = JSON.parse(r[k] || '[]'); } catch (_) { r[k] = []; } });
@@ -195,6 +215,36 @@ function normEventBody(b, base = {}) {
 }
 app.get('/api/events', (req, res) => {
   res.json(db.prepare('SELECT * FROM events ORDER BY start_date DESC, week, id').all().map(eventRow));
+});
+// list of staff accounts, for TMM to assign work (admin/editor only)
+app.get('/api/staff', (req, res) => {
+  if (!['admin', 'editor'].includes(req.user.role)) return res.status(403).json({ error: 'forbidden' });
+  res.json(db.prepare("SELECT username,name FROM users WHERE role='staff' ORDER BY name").all());
+});
+// staff: only events assigned to me
+app.get('/api/my/events', (req, res) => {
+  const me = req.user.username;
+  const rows = db.prepare('SELECT * FROM events ORDER BY start_date, week, id').all()
+    .filter(e => (e.assignees || '').split(',').map(s => s.trim()).includes(me))
+    .map(eventRow);
+  res.json(rows);
+});
+// staff: submit progress on an assigned event (prep / status / actual results / note)
+app.post('/api/my/events/:id/submit', (req, res) => {
+  const id = req.params.id;
+  const cur = db.prepare('SELECT * FROM events WHERE id=?').get(id);
+  if (!cur) return res.status(404).json({ error: 'not found' });
+  if (req.user.role === 'staff' && !isAssigned(req.user.username, id))
+    return res.status(403).json({ error: 'ไม่ได้รับมอบหมายงานนี้' });
+  const b = req.body || {};
+  const num = v => (v === undefined || v === null || v === '') ? undefined : (+v || 0);
+  const fields = { status: b.status, prep: Array.isArray(b.prep) ? JSON.stringify(b.prep) : undefined,
+    sales_units: num(b.sales_units), leads: num(b.leads), test_ride: num(b.test_ride),
+    act_training: num(b.act_training) };
+  const sets = [], vals = { id };
+  for (const [k, v] of Object.entries(fields)) if (v !== undefined) { sets.push(`${k}=@${k}`); vals[k] = v; }
+  if (sets.length) db.prepare(`UPDATE events SET ${sets.join(', ')} WHERE id=@id`).run(vals);
+  res.json(eventRow(db.prepare('SELECT * FROM events WHERE id=?').get(id)));
 });
 app.get('/api/events/:id', (req, res) => {
   const r = db.prepare('SELECT * FROM events WHERE id=?').get(req.params.id);
@@ -232,7 +282,13 @@ app.delete('/api/events/:id', (req, res) => {
 app.get('/api/events/:id/attachments', (req, res) => {
   res.json(db.prepare('SELECT * FROM attachments WHERE event_id=? ORDER BY id DESC').all(req.params.id));
 });
+// photo/file counts + latest upload per event, for the team tracker
+app.get('/api/attachments/counts', (req, res) => {
+  res.json(db.prepare('SELECT event_id, COUNT(*) n, MAX(created_at) last, MAX(uploaded_by) who FROM attachments GROUP BY event_id').all());
+});
 app.post('/api/events/:id/attachments', upload.array('files', 9), (req, res) => {
+  if (req.user.role === 'staff' && !isAssigned(req.user.username, req.params.id))
+    return res.status(403).json({ error: 'ไม่ได้รับมอบหมายงานนี้' });
   const ins = db.prepare(`INSERT INTO attachments (event_id,filename,original,mime,size,uploaded_by,note,created_at)
     VALUES (?,?,?,?,?,?,?,?)`);
   const now = new Date().toISOString();
@@ -242,6 +298,9 @@ app.post('/api/events/:id/attachments', upload.array('files', 9), (req, res) => 
 });
 app.delete('/api/attachments/:id', (req, res) => {
   const a = db.prepare('SELECT * FROM attachments WHERE id=?').get(req.params.id);
+  if (a && req.user.role === 'staff'
+      && !(isAssigned(req.user.username, a.event_id) && a.uploaded_by === (req.user.name || req.user.username)))
+    return res.status(403).json({ error: 'ลบได้เฉพาะไฟล์ที่ตนอัปโหลดในงานที่ได้รับมอบหมาย' });
   if (a) { try { fs.unlinkSync(path.join(uploadsDir, a.filename)); } catch (_) {} db.prepare('DELETE FROM attachments WHERE id=?').run(req.params.id); }
   res.json({ ok: true });
 });
@@ -337,7 +396,7 @@ app.post('/api/users', requireAdmin, (req, res) => {
   const b = req.body || {};
   const username = (b.username || '').trim();
   if (!username || !b.password) return res.status(400).json({ error: 'ต้องมี username และรหัสผ่าน' });
-  if (!['admin', 'editor', 'viewer'].includes(b.role)) return res.status(400).json({ error: 'role ไม่ถูกต้อง' });
+  if (!['admin', 'editor', 'viewer', 'staff'].includes(b.role)) return res.status(400).json({ error: 'role ไม่ถูกต้อง' });
   if (db.prepare('SELECT 1 FROM users WHERE username=?').get(username)) return res.status(409).json({ error: 'username นี้มีอยู่แล้ว' });
   const salt = crypto.randomBytes(16).toString('hex');
   db.prepare('INSERT INTO users (username,name,salt,hash,role,created_at) VALUES (?,?,?,?,?,?)')
@@ -348,7 +407,7 @@ app.put('/api/users/:username', requireAdmin, (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE username=?').get(req.params.username);
   if (!u) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
   const b = req.body || {};
-  const role = ['admin', 'editor', 'viewer'].includes(b.role) ? b.role : u.role;
+  const role = ['admin', 'editor', 'viewer', 'staff'].includes(b.role) ? b.role : u.role;
   // don't allow removing the last admin
   if (u.role === 'admin' && role !== 'admin' &&
       db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c <= 1)
