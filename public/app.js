@@ -134,10 +134,32 @@ async function loadMap(region) {
 
 // ================= DEALERS =================
 let dealerCache = [];
+// province -> region (5 ภาค)
+const PROV_REGION = (() => {
+  const R = {
+    'กรุงเทพ ปริมณฑล':['กรุงเทพมหานคร','นนทบุรี','ปทุมธานี','สมุทรปราการ','สมุทรสาคร','นครปฐม'],
+    'เหนือ':['เชียงใหม่','เชียงราย','ลำปาง','ลำพูน','แม่ฮ่องสอน','น่าน','พะเยา','แพร่','อุตรดิตถ์','ตาก','สุโขทัย','พิษณุโลก','เพชรบูรณ์','พิจิตร','กำแพงเพชร','นครสวรรค์','อุทัยธานี'],
+    'อีสาน':['เลย','หนองคาย','หนองบัวลำภู','อุดรธานี','บึงกาฬ','นครพนม','สกลนคร','มุกดาหาร','กาฬสินธุ์','ขอนแก่น','มหาสารคาม','ร้อยเอ็ด','ยโสธร','อำนาจเจริญ','อุบลราชธานี','ศรีสะเกษ','สุรินทร์','บุรีรัมย์','นครราชสีมา','ชัยภูมิ'],
+    'ใต้':['ชุมพร','ระนอง','สุราษฎร์ธานี','พังงา','ภูเก็ต','กระบี่','นครศรีธรรมราช','ตรัง','พัทลุง','สตูล','สงขลา','ปัตตานี','ยะลา','นราธิวาส'],
+    'กลาง':['พระนครศรีอยุธยา','อ่างทอง','ลพบุรี','สิงห์บุรี','ชัยนาท','สระบุรี','สุพรรณบุรี','กาญจนบุรี','ราชบุรี','เพชรบุรี','ประจวบคีรีขันธ์','สมุทรสงคราม','นครนายก','ปราจีนบุรี','สระแก้ว','ฉะเชิงเทรา','ชลบุรี','ระยอง','จันทบุรี','ตราด'],
+  };
+  const m = {}; for (const [r, ps] of Object.entries(R)) ps.forEach(p => m[p] = r); return m;
+})();
+const dealerRegion = d => PROV_REGION[d.province] || 'อื่นๆ/ไม่ระบุ';
+let dealerView = 'list';
 async function renderDealers() {
   dealerCache = await api('/api/dealers');
   const el = $('#dealers');
-  el.innerHTML = `
+  const sub = (v, label) => `<button class="sub ${dealerView===v?'on':''}" data-dv="${v}">${label}</button>`;
+  el.innerHTML = `<div class="subnav">${sub('list','📋 รายชื่อ')}${sub('overview','📊 ภาพรวม')}${sub('region','🗺️ แบ่งตามภาค')}${sub('insights','🤖 AI Insights')}</div><div id="dealerBody"></div>`;
+  el.querySelectorAll('.sub').forEach(b => b.addEventListener('click', () => { dealerView = b.dataset.dv; renderDealers(); }));
+  if (dealerView === 'list') renderDealerList();
+  else if (dealerView === 'overview') renderDealerOverview();
+  else if (dealerView === 'region') renderDealerRegion();
+  else if (dealerView === 'insights') renderDealerInsights();
+}
+function renderDealerList() {
+  $('#dealerBody').innerHTML = `
   <div class="card">
     <div class="toolbar">
       <input class="grow" id="dsearch" placeholder="🔍 ค้นหาชื่อ / รหัส / จังหวัด...">
@@ -159,8 +181,7 @@ async function renderDealers() {
     const code = prompt('รหัส Dealer (เช่น V00200):'); if (!code) return;
     const name = prompt('ชื่อ Dealer:'); if (!name) return;
     const province = prompt('จังหวัด:') || '';
-    const r = await api('/api/dealers', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ code, name, province }) });
+    const r = await api('/api/dealers', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code, name, province }) });
     if (r.error) return toast('ผิดพลาด: ' + r.error);
     toast('เพิ่ม ' + code + ' แล้ว'); renderDealers();
   });
@@ -196,6 +217,95 @@ function drawDealers() {
     await del('/api/dealers/' + code);
     dealerCache = dealerCache.filter(x => x.code !== code);
     toast('ลบ ' + code + ' แล้ว'); drawDealers();
+  }));
+}
+
+// ---- Dealer sub-view: ภาพรวม ----
+function renderDealerOverview() {
+  const ds = dealerCache;
+  const active = ds.filter(d => d.po > 0).length;
+  const totalOut = ds.reduce((s, d) => s + (d.outstanding || 0), 0);
+  const totalSell = ds.reduce((s, d) => s + (d.sellin || 0), 0);
+  const byRegion = {}, byTier = { A:0, B:0, C:0, 'ไม่ระบุ':0 };
+  ds.forEach(d => { const r = dealerRegion(d); (byRegion[r] = byRegion[r] || { sell:0, n:0 }); byRegion[r].sell += d.sellin||0; byRegion[r].n++;
+    byTier[d.tier || 'ไม่ระบุ'] = (byTier[d.tier || 'ไม่ระบุ'] || 0) + 1; });
+  const top = [...ds].sort((a,b)=>b.sellin-a.sellin).slice(0,7);
+  const bottom = [...ds].filter(d=>d.po>0).sort((a,b)=>a.sellin-b.sellin).slice(0,7);
+  const regBars = Object.entries(byRegion).map(([k,v])=>({label:k+' ('+v.n+')',v:v.sell,color:'#2E9E1E'})).sort((a,b)=>b.v-a.v);
+  const tierBars = Object.entries(byTier).filter(([k,v])=>v>0).map(([k,v])=>({label:'Tier '+k,v,color:k==='A'?'#2E9E1E':k==='B'?'#78909c':k==='C'?'#c2185b':'#cfd6dd'}));
+  const dlist = (arr, val) => arr.map(d=>`<tr class="d360row" data-code="${d.code}" style="cursor:pointer"><td><b style="color:var(--accent)">${esc(d.name)}</b><small class="sub">${esc(d.province)||''}</small></td><td class="num">${val(d)}</td></tr>`).join('');
+  $('#dealerBody').innerHTML = `
+  <div class="kpis">
+    <div class="kpi"><div class="l">Dealer ทั้งหมด</div><div class="v">${ds.length}</div><div class="s">${active} มียอดขาย</div></div>
+    <div class="kpi"><div class="l">Sell-in รวม</div><div class="v" style="color:#2E9E1E">${baht(totalSell)}</div><div class="s">บาท</div></div>
+    <div class="kpi"><div class="l">ค้างชำระรวม</div><div class="v" style="color:#e53935">${baht(totalOut)}</div><div class="s">รอเก็บ</div></div>
+    <div class="kpi"><div class="l">เฉลี่ย/ร้าน</div><div class="v">${baht(totalSell/(active||1))}</div><div class="s">Sell-in ต่อร้านที่ขาย</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>🗺️ Sell-in ตามภาค</h2>${bars(regBars,i=>i.v,v=>baht(v)+' ฿')}</div>
+    <div class="card"><h2>🏷️ จำนวนร้านตาม Tier</h2>${bars(tierBars,i=>i.v,v=>v+' ร้าน')}</div>
+  </div>
+  <div class="grid2">
+    <div class="card scroll"><h2>🏆 Top 7 (Sell-in)</h2><table>${dlist(top,d=>baht(d.sellin))}</table></div>
+    <div class="card scroll"><h2>📉 ยอดต่ำสุด 7 (ที่มีขาย)</h2><table>${dlist(bottom,d=>baht(d.sellin))}</table></div>
+  </div>`;
+  wireDealerRows();
+}
+// ---- Dealer sub-view: แบ่งตามภาค ----
+function renderDealerRegion() {
+  const groups = {};
+  dealerCache.forEach(d => { const r = dealerRegion(d); (groups[r] = groups[r] || []).push(d); });
+  const order = ['กลาง','อีสาน','เหนือ','กรุงเทพ ปริมณฑล','ใต้','อื่นๆ/ไม่ระบุ'];
+  const html = order.filter(r=>groups[r]).map(r => {
+    const g = groups[r].sort((a,b)=>b.sellin-a.sellin);
+    const sell = g.reduce((s,d)=>s+(d.sellin||0),0), out = g.reduce((s,d)=>s+(d.outstanding||0),0);
+    return `<div class="card"><div class="toolbar"><h2 style="margin:0">🗺️ ภาค${r} <span class="muted">(${g.length} ร้าน)</span></h2>
+      <span class="spacer"></span><span class="muted">Sell-in ${baht(sell)} · ค้างชำระ <b style="color:#e53935">${baht(out)}</b></span></div>
+      <div class="scroll"><table><tr><th>รหัส</th><th>Dealer</th><th>จังหวัด</th><th class="num">Sell-in</th><th class="num">ค้างชำระ</th><th>Tier</th></tr>
+      ${g.map(d=>`<tr class="d360row" data-code="${d.code}" style="cursor:pointer"><td>${d.code}</td><td><b style="color:var(--accent)">${esc(d.name)}</b></td><td>${esc(d.province)||'-'}</td>
+        <td class="num">${baht(d.sellin)}</td><td class="num" style="color:${d.outstanding>0?'#e53935':'#98a2b3'}">${d.outstanding>0?baht(d.outstanding):'-'}</td>
+        <td>${d.tier?`<span style="padding:2px 8px;border-radius:6px;color:#fff;font-size:11px;font-weight:700;background:${d.tier==='A'?'#2E9E1E':d.tier==='B'?'#78909c':'#c2185b'}">${d.tier}</span>`:'-'}</td></tr>`).join('')}
+      </table></div></div>`;
+  }).join('');
+  $('#dealerBody').innerHTML = html;
+  wireDealerRows();
+}
+// ---- Dealer sub-view: AI Insights (rule-based) ----
+function renderDealerInsights() {
+  const ds = dealerCache;
+  const sells = ds.map(d=>d.sellin||0).sort((a,b)=>b-a);
+  const topQ = sells[Math.floor(sells.length*0.25)] || 0; // top-quartile sell-in threshold
+  const critical = ds.filter(d=>(d.outstanding||0) > (d.sellin||0) && d.outstanding>0).sort((a,b)=>b.outstanding-a.outstanding);
+  const highOut = ds.filter(d=>d.outstanding>300000 && !(d.outstanding>d.sellin)).sort((a,b)=>b.outstanding-a.outstanding);
+  const potential = ds.filter(d=>d.sellin>=topQ && (d.outstanding||0)<100000 && d.po>0).sort((a,b)=>b.sellin-a.sellin);
+  const needTier = ds.filter(d=>d.sellin>500000 && !d.tier).sort((a,b)=>b.sellin-a.sellin);
+  const silent = ds.filter(d=>(d.po||0)===0 || (d.sellin||0)===0);
+  const card = (icon, title, color, arr, metric, action) => `
+    <div class="card"><h2 style="color:${color}">${icon} ${title} <span class="muted">(${arr.length})</span></h2>
+      <div class="muted" style="margin:-8px 0 10px;font-size:12.5px">💡 ${action}</div>
+      ${arr.length ? `<div class="scroll" style="max-height:260px"><table>${arr.slice(0,15).map(d=>`<tr class="d360row" data-code="${d.code}" style="cursor:pointer">
+        <td><b style="color:var(--accent)">${esc(d.name)}</b><small class="sub">${esc(d.province)||''}${d.tier?' · Tier '+d.tier:''}</small></td>
+        <td class="num">${metric(d)}</td></tr>`).join('')}</table>${arr.length>15?`<div class="muted" style="margin-top:6px">และอีก ${arr.length-15} ร้าน</div>`:''}</div>` : '<div class="muted">✅ ไม่มี</div>'}
+    </div>`;
+  $('#dealerBody').innerHTML = `
+  <div class="card" style="background:#f0f9ec;border:1px solid #d4edc8">
+    <b>🤖 AI Insights (วิเคราะห์อัตโนมัติจากข้อมูล)</b>
+    <div class="muted" style="margin-top:4px;font-size:12.5px">จัดกลุ่มร้านตามสถานการณ์ + คำแนะนำการจัดการ · คลิกร้านเพื่อดู 360° · (เวอร์ชันถัดไปเสริม Claude AI ให้วิเคราะห์เชิงลึกเป็นภาษาคน)</div>
+  </div>
+  <div class="grid2">
+    ${card('🔴','เสี่ยงวิกฤต — ค้างชำระ > ยอดที่จ่าย','#c62828',critical,d=>`<span style="color:#e53935">${baht(d.outstanding)}</span>`,'ทบทวนเครดิต/ระงับส่งของ ก่อนขายเพิ่ม')}
+    ${card('🟠','ค้างชำระสูง (>3 แสน)','#ef6c00',highOut,d=>`<span style="color:#e53935">${baht(d.outstanding)}</span>`,'เร่งติดตามเก็บเงิน + ตั้งแผนผ่อนคืน')}
+  </div>
+  <div class="grid2">
+    ${card('⭐','ศักยภาพสูง — ยอดดี จ่ายตรง','#2e7d32',potential,d=>baht(d.sellin),'ดันเป็นร้าน SR/Tier A + จัด Event กระตุ้น')}
+    ${card('🏷️','ควรกำหนด Tier (ยอดสูงแต่ยังไม่จัดระดับ)','#1565C0',needTier,d=>baht(d.sellin),'ประเมิน + กำหนด Tier A/B ให้ชัด')}
+  </div>
+  ${card('💤','เงียบ/ยังไม่มียอดขาย','#78909c',silent,d=>d.po+' PO','ตรวจสอบสถานะร้าน + วางแผนกระตุ้นหรือถอดออก')}`;
+  wireDealerRows();
+}
+function wireDealerRows() {
+  document.querySelectorAll('#dealerBody .d360row').forEach(tr => tr.addEventListener('click', e => {
+    if (e.target.closest('.f-del')) return; openDealer360(tr.dataset.code);
   }));
 }
 

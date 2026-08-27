@@ -109,6 +109,9 @@ input,select,textarea{transition:border-color .12s,box-shadow .12s}
 .b-out{background:#fff3e0;color:#ef6c00} .b-reuse{background:#e9f8e0;color:#2E7D32} .b-cons{background:#fce4ec;color:#c2185b}
 .tier-A{background:#e8f5e9;color:#2e7d32}.tier-B{background:#fff8e1;color:#f9a825}.tier-C{background:#fce4ec;color:#c2185b}
 .scroll{overflow-x:auto}
+.subnav{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;background:#fff;padding:6px;border-radius:12px;box-shadow:var(--shadow);width:fit-content;max-width:100%}
+.subnav .sub{border:none;background:transparent;padding:8px 16px;border-radius:9px;font-size:13.5px;cursor:pointer;font-family:inherit;color:#475467;font-weight:500;transition:all .12s}
+.subnav .sub:hover{background:#f2f4f2} .subnav .sub.on{background:#111;color:#fff}
 .pill-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .pill{border:1px solid #cfd6e0;background:#fff;border-radius:20px;padding:5px 13px;font-size:12px;cursor:pointer}
 .pill.active{background:var(--blue);color:#fff;border-color:var(--blue)}
