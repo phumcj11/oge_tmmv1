@@ -194,7 +194,7 @@ const EVENT_FIELDS = ['dealer_code','dealer_name','province','week','event_date'
   'leads','sales_units','type','tier','test_ride','dept','activity_name','company','branch','customer_name',
   'customer_phone','start_date','end_date','duration_days','goal','owner','support_team','bank','bank_account',
   'budget_lines','stock_prep','action_plan','manpower','target_sellout','target_lead','target_testride','target_training','act_training',
-  'assignees','prep'];
+  'assignees','prep','project_id'];
 const EVENT_JSON = ['budget_lines', 'stock_prep', 'action_plan', 'manpower', 'prep'];
 function eventRow(r) {
   if (!r) return r;
@@ -205,6 +205,7 @@ function normEventBody(b, base = {}) {
   const out = {};
   for (const f of EVENT_FIELDS) {
     let v = (b[f] !== undefined) ? b[f] : base[f];
+    if (f === 'project_id') { out[f] = (v === '' || v == null) ? null : (+v || null); continue; }
     if (EVENT_JSON.includes(f)) v = JSON.stringify(Array.isArray(v) ? v : (typeof v === 'string' ? (JSON.parse(v || '[]')) : []));
     out[f] = v ?? (EVENT_JSON.includes(f) ? '[]' : '');
   }
@@ -213,6 +214,49 @@ function normEventBody(b, base = {}) {
   if (lines.length) out.budget = lines.reduce((s, l) => s + (+l.amount || 0), 0);
   return out;
 }
+// ---------- Projects (โครงการ/แคมเปญ ครอบ Event) ----------
+const PROJECT_FIELDS = ['name', 'description', 'goal', 'owner', 'dealer_code', 'start_date', 'end_date', 'status', 'budget', 'color'];
+function projectRollup(p, evs) {
+  const es = evs.filter(e => e.project_id === p.id);
+  const sum = k => es.reduce((s, e) => s + (+e[k] || 0), 0);
+  return { ...p, events: es.length, done: es.filter(e => e.status === 'done').length,
+    budget_used: sum('budget'),
+    t_sellout: sum('target_sellout'), a_sellout: sum('sales_units'),
+    t_lead: sum('target_lead'), a_lead: sum('leads'),
+    t_test: sum('target_testride'), a_test: sum('test_ride'),
+    t_train: sum('target_training'), a_train: sum('act_training') };
+}
+app.get('/api/projects', (req, res) => {
+  const projects = db.prepare('SELECT * FROM projects ORDER BY COALESCE(start_date,\'9999\'), id').all();
+  const evs = db.prepare('SELECT * FROM events').all();
+  res.json(projects.map(p => projectRollup(p, evs)));
+});
+app.get('/api/projects/:id', (req, res) => {
+  const p = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  const evs = db.prepare('SELECT * FROM events').all();
+  res.json({ ...projectRollup(p, evs), events_list: evs.filter(e => e.project_id === p.id).map(eventRow) });
+});
+app.post('/api/projects', (req, res) => {
+  const b = req.body || {};
+  const row = {}; PROJECT_FIELDS.forEach(f => row[f] = b[f] ?? (f === 'budget' ? 0 : f === 'status' ? 'active' : f === 'color' ? '#2E9E1E' : ''));
+  const cols = PROJECT_FIELDS.join(','), vals = PROJECT_FIELDS.map(f => '@' + f).join(',');
+  const r = db.prepare(`INSERT INTO projects (${cols},created_at) VALUES (${vals},@created_at)`).run({ ...row, created_at: new Date().toISOString() });
+  res.json(db.prepare('SELECT * FROM projects WHERE id=?').get(r.lastInsertRowid));
+});
+app.put('/api/projects/:id', (req, res) => {
+  const cur = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
+  if (!cur) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  const row = {}; PROJECT_FIELDS.forEach(f => row[f] = b[f] !== undefined ? b[f] : cur[f]);
+  db.prepare(`UPDATE projects SET ${PROJECT_FIELDS.map(f => `${f}=@${f}`).join(', ')} WHERE id=@id`).run({ ...row, id: cur.id });
+  res.json(db.prepare('SELECT * FROM projects WHERE id=?').get(cur.id));
+});
+app.delete('/api/projects/:id', (req, res) => {
+  db.prepare('UPDATE events SET project_id=NULL WHERE project_id=?').run(req.params.id); // keep events, unlink
+  db.prepare('DELETE FROM projects WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
 app.get('/api/events', (req, res) => {
   res.json(db.prepare('SELECT * FROM events ORDER BY start_date DESC, week, id').all().map(eventRow));
 });

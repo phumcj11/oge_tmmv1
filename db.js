@@ -48,6 +48,12 @@ function init() {
       sold INTEGER DEFAULT 0, stock INTEGER DEFAULT 0, note TEXT, updated_at TEXT,
       UNIQUE(dealer_code, ym, model)
     );
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT, description TEXT, goal TEXT, owner TEXT, dealer_code TEXT,
+      start_date TEXT, end_date TEXT, status TEXT DEFAULT 'active',
+      budget INTEGER DEFAULT 0, color TEXT DEFAULT '#2E9E1E', created_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS attachments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_id INTEGER, filename TEXT, original TEXT, mime TEXT, size INTEGER,
@@ -86,6 +92,7 @@ function init() {
     target_testride: "INTEGER DEFAULT 0", target_training: "INTEGER DEFAULT 0",
     act_training: "INTEGER DEFAULT 0",
     assignees: "TEXT DEFAULT ''", prep: "TEXT DEFAULT '[]'",
+    project_id: "INTEGER",
   };
   for (const [c, def] of Object.entries(eAdd))
     if (!ecols.includes(c)) db.exec(`ALTER TABLE events ADD COLUMN ${c} ${def}`);

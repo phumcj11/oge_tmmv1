@@ -391,8 +391,12 @@ const achv = (a, t) => t > 0 ? Math.round(100 * a / t) : 0;
 const achvColor = p => p >= 100 ? '#2e7d32' : p >= 60 ? '#ef6c00' : '#e53935';
 
 async function renderEvents() {
-  const [ev, ov, dl] = await Promise.all([api('/api/events'), api('/api/overview'), api('/api/dealers')]);
-  eventCache = ev; eventProducts = ov.products.map(p => p.model); dealerCache = dl;
+  const [ev, ov, dl, pr] = await Promise.all([api('/api/events'), api('/api/overview'), api('/api/dealers'), api('/api/projects').catch(() => [])]);
+  projectCache = pr || [];
+  if (typeof projectFilter === 'number' && !projectCache.some(p => p.id === projectFilter)) projectFilter = null;
+  eventCache = projectFilter === 'none' ? ev.filter(e => !e.project_id)
+    : projectFilter ? ev.filter(e => e.project_id === projectFilter) : ev;
+  eventProducts = ov.products.map(p => p.model); dealerCache = dl;
   if (eventView === 'team') {
     const [st, ac] = await Promise.all([api('/api/staff').catch(() => []), api('/api/attachments/counts').catch(() => [])]);
     staffMap = Object.fromEntries((st || []).map(s => [s.username, s.name]));
@@ -413,9 +417,11 @@ async function renderEvents() {
   </div>
   <div class="card"><div class="toolbar"><h2 style="margin:0">🎪 กิจกรรม ARM</h2>
     <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button><button class="vt ${eventView==='board'?'on':''}" id="vboard">🎯 Board</button><button class="vt ${eventView==='gantt'?'on':''}" id="vgantt">📅 Gantt</button><button class="vt ${eventView==='performance'?'on':''}" id="vperf">📊 Performance</button><button class="vt ${eventView==='team'?'on':''}" id="vteam">👷 ติดตามทีม</button></div>
+    <select id="efilter" class="cell" style="max-width:220px"><option value="">📁 ทุกโครงการ</option>${projectCache.map(p=>`<option value="${p.id}" ${projectFilter===p.id?'selected':''}>${esc(p.name)} (${p.events})</option>`).join('')}<option value="none" ${projectFilter==='none'?'selected':''}>— ยังไม่อยู่ในโครงการ —</option></select>
     <span class="spacer"></span>
     <button class="btn editor-only" id="enew">➕ กิจกรรมใหม่</button>
     <button class="btn ghost" id="eexport">⬇ Export CSV</button></div>
+    ${projectFilter?`<div class="pj-filterbar">กำลังดูโครงการ: <b>${esc((projectCache.find(p=>p.id===projectFilter)||{}).name||(projectFilter==='none'?'ยังไม่อยู่ในโครงการ':''))}</b> <button class="btn sm ghost" id="pjclear">✕ ล้างตัวกรอง</button></div>`:''}
     ${eventView==='calendar' ? buildCalendar() : eventView==='gantt' ? buildGantt() : eventView==='board' ? buildBoard() : eventView==='performance' ? buildPerformance() : eventView==='team' ? buildTeam() : `<div class="scroll"><table id="etable">
       <tr><th>กิจกรรม</th><th>ร้าน/สาขา</th><th>ประเภท</th><th>ระดับ</th><th>วันที่</th><th>สถานะ</th>
         <th class="num">Sell-out</th><th class="num">Lead</th><th class="num">Test</th><th class="num">Train</th><th></th></tr>
@@ -439,6 +445,8 @@ async function renderEvents() {
   $('#vperf').addEventListener('click', () => { eventView='performance'; renderEvents(); });
   $('#vteam').addEventListener('click', () => { eventView='team'; renderEvents(); });
   $('#vgantt').addEventListener('click', () => { eventView='gantt'; renderEvents(); });
+  $('#efilter')?.addEventListener('change', e => { const v = e.target.value; projectFilter = v === '' ? null : v === 'none' ? 'none' : +v; renderEvents(); });
+  $('#pjclear')?.addEventListener('click', () => { projectFilter = null; renderEvents(); });
   if (eventView==='calendar') wireCalendar();
   if (eventView==='board') wireBoard();
   if (eventView==='team') wireTeam();
@@ -737,6 +745,7 @@ function openEventEditor(ev) {
 
     <h3 class="sec">รายละเอียด</h3>
     <div class="fgrid">
+      <div class="fg"><label>📁 โครงการ</label><select id="e_project" ${readonly?'disabled':''}><option value="">- ไม่อยู่ในโครงการ -</option>${(projectCache||[]).map(p=>`<option value="${p.id}" ${ev.project_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
       ${sel('e_dept','แผนกผู้ส่งคำขอ',EV_DEPT,ev.dept)}
       ${g('e_activity','ชื่อกิจกรรม',ev.activity_name,'text','เช่น Test Ride Day @เชียงใหม่')}
       <div class="fg"><label>ร้านค้า (Dealer)</label><select id="e_dealer" ${readonly?'disabled':''}><option value="">- เลือก -</option>${dealerOpts}</select></div>
@@ -932,6 +941,7 @@ async function saveEvent(id) {
     bank: $('#e_bank').value, bank_account: $('#e_acct').value,
     budget_lines: evBudget, stock_prep: evStock, action_plan: evAction, manpower: evManpower,
     assignees: evAssignees.join(','), prep: evPrep.filter(p => (p.label || '').trim()),
+    project_id: $('#e_project')?.value || null,
   };
   const d = id
     ? await api('/api/events/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
@@ -1093,11 +1103,95 @@ async function showHistory(code) {
 function render(t) {
   if (t === 'dashboard') renderDashboard();
   else if (t === 'dealers') renderDealers();
+  else if (t === 'projects') renderProjects();
   else if (t === 'events') renderEvents();
   else if (t === 'posm') renderPosm();
   else if (t === 'sellout') renderSellout();
   else if (t === 'audit') renderAudit();
   else if (t === 'users') renderUsers();
+}
+
+// ================= PROJECTS (โครงการ/แคมเปญ) =================
+const PROJ_STATUS = { active: 'กำลังดำเนิน', planning: 'วางแผน', done: 'เสร็จสิ้น', hold: 'พัก/ระงับ' };
+const PROJ_SCOLOR = { active: '#2E9E1E', planning: '#78909c', done: '#2e7d32', hold: '#b8860b' };
+const PROJ_COLORS = ['#2E9E1E', '#6A1B9A', '#00897B', '#E65100', '#1565C0', '#C2185B'];
+let projectCache = [], projectFilter = null;
+async function renderProjects() {
+  const el = $('#projects');
+  const projects = await api('/api/projects');
+  projectCache = projects;
+  const ro = currentUser.role === 'viewer';
+  const totBudget = projects.reduce((s, p) => s + (+p.budget_used || 0), 0);
+  const totEv = projects.reduce((s, p) => s + p.events, 0);
+  const totDone = projects.reduce((s, p) => s + p.done, 0);
+  const pct = (a, t) => t ? Math.round(100 * a / t) : 0;
+  const card = p => {
+    const prog = pct(p.done, p.events);
+    const mini = (l, a, t) => `<div class="pj-mini"><span>${l}</span><b>${a||0}<small>/${t||0}</small></b></div>`;
+    return `<div class="pj-card" data-id="${p.id}" style="--pc:${p.color||'#2E9E1E'}">
+      <div class="pj-top"><div class="pj-name">${esc(p.name||'(ไม่มีชื่อ)')}</div>
+        <span class="sbadge" style="background:${PROJ_SCOLOR[p.status]||'#78909c'}22;color:${PROJ_SCOLOR[p.status]||'#78909c'}">${PROJ_STATUS[p.status]||p.status}</span></div>
+      <div class="pj-meta">${p.start_date?esc(p.start_date):'?'} → ${p.end_date?esc(p.end_date):'?'}${p.owner?' · 👤 '+esc(p.owner):''}</div>
+      ${p.goal?`<div class="pj-goal">🎯 ${esc(p.goal)}</div>`:''}
+      <div class="pj-prog"><div class="pj-prog-bar"><i style="width:${prog}%"></i></div><small>${p.done}/${p.events} กิจกรรมเสร็จ · ${prog}%</small></div>
+      <div class="pj-minis">${mini('Sell-out', p.a_sellout, p.t_sellout)}${mini('Lead', p.a_lead, p.t_lead)}${mini('Test', p.a_test, p.t_test)}<div class="pj-mini"><span>งบใช้</span><b>${baht(p.budget_used||0)}</b></div></div>
+      <div class="pj-actions"><button class="btn sm pj-open">เปิดกิจกรรม →</button>${ro?'':'<button class="btn sm ghost pj-edit">แก้ไข</button><button class="btn sm del danger pj-del">ลบ</button>'}</div>
+    </div>`;
+  };
+  el.innerHTML = `
+  <div class="kpis">
+    <div class="kpi"><div class="l">โครงการทั้งหมด</div><div class="v">${projects.length}</div><div class="s">${projects.filter(p=>p.status==='active').length} กำลังดำเนิน</div></div>
+    <div class="kpi"><div class="l">กิจกรรมในโครงการ</div><div class="v">${totEv}</div><div class="s">${totDone} เสร็จแล้ว</div></div>
+    <div class="kpi"><div class="l">ความคืบหน้ารวม</div><div class="v" style="color:${achvColor(pct(totDone,totEv))}">${pct(totDone,totEv)}%</div><div class="s">งานเสร็จ/ทั้งหมด</div></div>
+    <div class="kpi"><div class="l">งบที่ใช้รวม</div><div class="v">${baht(totBudget)}</div><div class="s">บาท</div></div>
+  </div>
+  <div class="card"><div class="toolbar"><h2 style="margin:0">📁 โครงการ / แคมเปญ</h2>
+    <span class="muted">โครงการ = แผนงานที่มีหลายกิจกรรมย่อย (Event) อยู่ข้างใน</span>
+    <span class="spacer"></span>${ro?'':'<button class="btn" id="pjnew">➕ โครงการใหม่</button>'}</div>
+    ${projects.length?`<div class="pj-grid">${projects.map(card).join('')}</div>`
+      :'<div class="muted" style="text-align:center;padding:30px">ยังไม่มีโครงการ — กด “โครงการใหม่” เพื่อสร้างแผนงานแรก<br><small>เช่น “แผนปรับปรุงร้าน ทวียนต์ Q4” แล้วผูกกิจกรรมเข้าไป</small></div>'}
+  </div>`;
+  $('#pjnew')?.addEventListener('click', () => openProjectEditor(null));
+  el.querySelectorAll('.pj-card').forEach(c => {
+    const id = +c.dataset.id;
+    c.querySelector('.pj-open').addEventListener('click', () => { projectFilter = id; document.querySelector('.tab[data-t="events"]').click(); });
+    c.querySelector('.pj-edit')?.addEventListener('click', () => openProjectEditor(projects.find(p => p.id === id)));
+    c.querySelector('.pj-del')?.addEventListener('click', async () => {
+      if (!confirm('ลบโครงการนี้? (กิจกรรมข้างในจะไม่ถูกลบ แต่จะหลุดออกจากโครงการ)')) return;
+      await del('/api/projects/' + id); toast('ลบโครงการแล้ว'); renderProjects();
+    });
+  });
+}
+function openProjectEditor(p) {
+  p = p || {};
+  const el = $('#projects');
+  const dealerOpts = (dealerCache && dealerCache.length ? dealerCache : []).map(d => `<option value="${esc(d.code)}" ${p.dealer_code===d.code?'selected':''}>${esc(d.name)} (${esc(d.code)})</option>`).join('');
+  const g = (id, label, val, type = 'text', ph = '') => `<div class="fg"><label>${label}</label><input id="${id}" type="${type}" value="${esc(val??'')}" placeholder="${ph}"></div>`;
+  el.innerHTML = `<div class="card"><div class="toolbar"><h2 style="margin:0">${p.id?'✏️ แก้ไขโครงการ':'➕ โครงการใหม่'}</h2>
+    <span class="spacer"></span><button class="btn ghost" id="pjcancel">← กลับ</button><button class="btn" id="pjsave">💾 บันทึก</button></div>
+    <div class="fgrid">
+      ${g('p_name','ชื่อโครงการ',p.name,'text','เช่น แผนปรับปรุงร้าน ทวียนต์ Q4')}
+      ${g('p_owner','ผู้รับผิดชอบ',p.owner)}
+      <div class="fg"><label>ร้านหลัก (ถ้ามี)</label><select id="p_dealer"><option value="">- ไม่ระบุ -</option>${dealerOpts}</select></div>
+      ${g('p_start','วันเริ่ม',p.start_date,'date')}
+      ${g('p_end','วันสิ้นสุด',p.end_date,'date')}
+      ${g('p_budget','งบประมาณรวม (บาท)',p.budget,'number')}
+      <div class="fg"><label>สถานะ</label><select id="p_status">${Object.entries(PROJ_STATUS).map(([k,v])=>`<option value="${k}" ${(p.status||'active')===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="fg"><label>สีโครงการ</label><select id="p_color">${PROJ_COLORS.map(c=>`<option value="${c}" ${(p.color||'#2E9E1E')===c?'selected':''}>${c}</option>`).join('')}</select></div>
+    </div>
+    <div class="fg"><label>เป้าหมายหลัก</label><input id="p_goal" value="${esc(p.goal||'')}" placeholder="เช่น ยกร้านเป็น Tier A + เพิ่มยอด 20%"></div>
+    <div class="fg"><label>รายละเอียด</label><textarea id="p_desc" rows="3">${esc(p.description||'')}</textarea></div>
+  </div>`;
+  $('#pjcancel').addEventListener('click', renderProjects);
+  $('#pjsave').addEventListener('click', async () => {
+    const body = { name: $('#p_name').value, owner: $('#p_owner').value, dealer_code: $('#p_dealer').value,
+      start_date: $('#p_start').value, end_date: $('#p_end').value, budget: +$('#p_budget').value || 0,
+      status: $('#p_status').value, color: $('#p_color').value, goal: $('#p_goal').value, description: $('#p_desc').value };
+    if (!body.name.trim()) { toast('กรุณาใส่ชื่อโครงการ'); return; }
+    const d = p.id ? await api('/api/projects/' + p.id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                   : await api('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (d.id) { toast('บันทึกโครงการแล้ว'); renderProjects(); }
+  });
 }
 
 // ================= STORE AUDIT (มาตรฐานร้าน) =================
