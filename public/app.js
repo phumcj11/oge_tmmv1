@@ -167,7 +167,9 @@ function drawDealers() {
 
 // ================= EVENTS (aligned to Lark "กิจกรรม ARM" form) =================
 let eventCache = [], eventProducts = [];
+let eventView = 'list', calMonth = null;
 const EV_TYPE = { activation:'กิจกรรมหน้าร้าน', training:'อบรม', testride:'ทดลองขับ', other:'อื่นๆ' };
+const EV_TCOLOR = { activation:'#1565C0', training:'#6A1B9A', testride:'#00897B', other:'#78909c' };
 const EV_DEPT = ['Branding', 'Back Office'];
 const EV_STATUS = { planned:'วางแผน', confirmed:'ยืนยันแล้ว', done:'จัดเสร็จ', cancelled:'ยกเลิก' };
 const achv = (a, t) => t > 0 ? Math.round(100 * a / t) : 0;
@@ -189,11 +191,12 @@ async function renderEvents() {
     ${kpi('Test Ride (เป้า vs ผล)', act.test, tgt.test, 'คน')}
     ${kpi('Training (เป้า vs ผล)', act.train, tgt.train, 'คน')}
   </div>
-  <div class="card"><div class="toolbar"><h2 style="margin:0">🎪 กิจกรรม ARM</h2><span class="muted">เก็บข้อมูลตามฟอร์ม Lark + ติดตามเป้า vs ผล</span>
+  <div class="card"><div class="toolbar"><h2 style="margin:0">🎪 กิจกรรม ARM</h2>
+    <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button></div>
     <span class="spacer"></span>
     <button class="btn editor-only" id="enew">➕ กิจกรรมใหม่</button>
     <button class="btn ghost" id="eexport">⬇ Export CSV</button></div>
-    <div class="scroll"><table id="etable">
+    ${eventView==='calendar' ? buildCalendar() : `<div class="scroll"><table id="etable">
       <tr><th>กิจกรรม</th><th>ร้าน/สาขา</th><th>ประเภท</th><th>ระดับ</th><th>วันที่</th><th>สถานะ</th>
         <th class="num">Sell-out</th><th class="num">Lead</th><th class="num">Test</th><th class="num">Train</th><th></th></tr>
       ${eventCache.length ? eventCache.map(e => {
@@ -209,7 +212,10 @@ async function renderEvents() {
         <td style="white-space:nowrap"><button class="btn sm f-edit">${currentUser.role==='viewer'?'ดู':'แก้ไข'}</button>
           ${currentUser.role==='viewer'?'':'<button class="btn sm del danger f-del">ลบ</button>'}</td></tr>`;
       }).join('') : '<tr><td colspan="11" class="muted">ยังไม่มีกิจกรรม — กด “กิจกรรมใหม่”</td></tr>'}
-    </table></div></div>`;
+    </table></div>`}</div>`;
+  $('#vlist').addEventListener('click', () => { eventView='list'; renderEvents(); });
+  $('#vcal').addEventListener('click', () => { eventView='calendar'; renderEvents(); });
+  if (eventView==='calendar') wireCalendar();
   const enew = $('#enew');
   if (enew) enew.addEventListener('click', () => openEventEditor(null));
   $('#eexport').addEventListener('click', () => exportCSV('events.csv',
@@ -225,6 +231,41 @@ async function renderEvents() {
     if (!confirm('ลบกิจกรรมนี้?')) return;
     await del('/api/events/' + id); toast('ลบแล้ว'); renderEvents();
   }));
+}
+
+function shiftMonth(ym, delta) { let [y, m] = ym.split('-').map(Number); m += delta; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } return y + '-' + String(m).padStart(2, '0'); }
+function buildCalendar() {
+  if (!calMonth) { const d = new Date(); calMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+  const [Y, M] = calMonth.split('-').map(Number);
+  const startWd = new Date(Y, M - 1, 1).getDay();
+  const days = new Date(Y, M, 0).getDate();
+  const THM = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const wd = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+  const byDay = {};
+  eventCache.forEach(e => { const sd = e.start_date; if (sd && sd.startsWith(calMonth)) { const d = +sd.slice(8, 10); (byDay[d] = byDay[d] || []).push(e); } });
+  let cells = '';
+  for (let i = 0; i < startWd; i++) cells += '<div class="cal-cell empty"></div>';
+  for (let d = 1; d <= days; d++) {
+    const chips = (byDay[d] || []).map(e => `<div class="cal-ev" data-id="${e.id}" style="background:${EV_TCOLOR[e.type]||'#78909c'}" title="${esc(e.activity_name||'')}">${esc(e.activity_name || EV_TYPE[e.type] || 'กิจกรรม')}</div>`).join('');
+    const wknd = ((startWd + d - 1) % 7 === 0 || (startWd + d - 1) % 7 === 6) ? ' wknd' : '';
+    cells += `<div class="cal-cell${wknd}" data-day="${String(d).padStart(2,'0')}"><div class="cal-d">${d}</div>${chips}</div>`;
+  }
+  const header = `<div class="cal-head"><button class="btn sm ghost" id="calprev">‹ ก่อนหน้า</button><b>${THM[M-1]} ${Y+543}</b><button class="btn sm ghost" id="calnext">ถัดไป ›</button></div>`;
+  const legend = Object.keys(EV_TYPE).map(k => `<span class="cal-lg"><i style="background:${EV_TCOLOR[k]}"></i>${EV_TYPE[k]}</span>`).join('');
+  return `${header}<div class="cal-grid">${wd.map(w=>`<div class="cal-wd">${w}</div>`).join('')}${cells}</div>
+    <div class="cal-foot"><div class="cal-legend">${legend}</div><span class="muted">คลิกกิจกรรมเพื่อดู/แก้ไข · คลิกวันว่างเพื่อสร้างกิจกรรมใหม่</span></div>`;
+}
+function wireCalendar() {
+  $('#calprev')?.addEventListener('click', () => { calMonth = shiftMonth(calMonth, -1); renderEvents(); });
+  $('#calnext')?.addEventListener('click', () => { calMonth = shiftMonth(calMonth, 1); renderEvents(); });
+  document.querySelectorAll('#events .cal-ev').forEach(c => c.addEventListener('click', e => {
+    e.stopPropagation(); openEventEditor(eventCache.find(x => x.id == c.dataset.id));
+  }));
+  if (currentUser.role !== 'viewer')
+    document.querySelectorAll('#events .cal-cell[data-day]').forEach(cell => cell.addEventListener('click', () => {
+      const iso = calMonth + '-' + cell.dataset.day;
+      openEventEditor({ start_date: iso, end_date: iso });
+    }));
 }
 
 let evBudget = [], evStock = [];
