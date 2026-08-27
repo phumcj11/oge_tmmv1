@@ -290,5 +290,72 @@ app.delete('/api/sellout/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Store Audit (มาตรฐานร้าน + funnel) ----------
+// checklist keys aligned with the retail plan KPIs (Table 19)
+const AUDIT_ITEMS = [
+  { k: 'display', label: 'รถจัดแสดงตรงมาตรฐาน' },
+  { k: 'signage', label: 'ป้ายข้อมูลครบถ้วน' },
+  { k: 'clean', label: 'รถสะอาด พร้อมใช้งาน' },
+  { k: 'testride', label: 'อนุญาตนั่ง/ทดลองขับ' },
+  { k: 'staff', label: 'ผู้รับผิดชอบผ่านอบรม' },
+  { k: 'online', label: 'ทำเนื้อหาออนไลน์ตามแผน' },
+  { k: 'followup', label: 'ติดตามลูกค้าตรงเวลา' },
+];
+function auditRow(r) {
+  if (!r) return r;
+  let cl = {}; try { cl = JSON.parse(r.checklist || '{}'); } catch (_) {}
+  const passed = AUDIT_ITEMS.filter(i => cl[i.k]).length;
+  r.checklist = cl;
+  r.readiness = Math.round(100 * passed / AUDIT_ITEMS.length);
+  r.conversion = r.lead > 0 ? Math.round(100 * r.sold / r.lead) : 0;
+  return r;
+}
+app.get('/api/audit/items', (req, res) => res.json(AUDIT_ITEMS));
+app.get('/api/audit', (req, res) => {
+  const { month } = req.query;
+  const rows = (month
+    ? db.prepare('SELECT * FROM store_audit WHERE ym=? ORDER BY tier, dealer_name').all(month)
+    : db.prepare('SELECT * FROM store_audit ORDER BY ym DESC, tier, dealer_name').all());
+  res.json(rows.map(auditRow));
+});
+app.get('/api/audit/summary', (req, res) => {
+  const month = req.query.month;
+  const where = month ? 'WHERE ym=?' : '';
+  const args = month ? [month] : [];
+  const rows = db.prepare(`SELECT * FROM store_audit ${where}`).all(...args).map(auditRow);
+  const n = rows.length || 1;
+  const avgReadiness = Math.round(rows.reduce((s, r) => s + r.readiness, 0) / n);
+  const lead = rows.reduce((s, r) => s + (r.lead || 0), 0);
+  const testRide = rows.reduce((s, r) => s + (r.test_ride || 0), 0);
+  const quote = rows.reduce((s, r) => s + (r.quote || 0), 0);
+  const sold = rows.reduce((s, r) => s + (r.sold || 0), 0);
+  const byTier = ['A', 'B'].map(t => {
+    const g = rows.filter(r => r.tier === t);
+    return { tier: t, count: g.length, avgReadiness: g.length ? Math.round(g.reduce((s, r) => s + r.readiness, 0) / g.length) : 0 };
+  });
+  const months = db.prepare('SELECT DISTINCT ym FROM store_audit ORDER BY ym DESC').all().map(r => r.ym);
+  res.json({ count: rows.length, avgReadiness, funnel: { lead, testRide, quote, sold },
+    conversion: lead ? Math.round(100 * sold / lead) : 0, byTier, months });
+});
+app.post('/api/audit', (req, res) => {
+  const b = req.body || {};
+  if (!b.dealer_code || !b.ym) return res.status(400).json({ error: 'ต้องมี dealer และเดือน' });
+  const d = db.prepare('SELECT name FROM dealers WHERE code=?').get(b.dealer_code);
+  db.prepare(`INSERT INTO store_audit (dealer_code,dealer_name,ym,tier,checklist,lead,test_ride,quote,sold,note,updated_at)
+    VALUES (@dealer_code,@dealer_name,@ym,@tier,@checklist,@lead,@test_ride,@quote,@sold,@note,@updated_at)
+    ON CONFLICT(dealer_code,ym) DO UPDATE SET tier=@tier,checklist=@checklist,lead=@lead,test_ride=@test_ride,
+      quote=@quote,sold=@sold,note=@note,updated_at=@updated_at`)
+    .run({ dealer_code: b.dealer_code, dealer_name: (d && d.name) || b.dealer_code, ym: b.ym, tier: b.tier || 'B',
+      checklist: JSON.stringify(b.checklist || {}), lead: +b.lead || 0, test_ride: +b.test_ride || 0,
+      quote: +b.quote || 0, sold: +b.sold || 0, note: b.note || '', updated_at: new Date().toISOString() });
+  // keep the dealer master tier in sync
+  if (b.tier) db.prepare('UPDATE dealers SET tier=? WHERE code=?').run(b.tier, b.dealer_code);
+  res.json(auditRow(db.prepare('SELECT * FROM store_audit WHERE dealer_code=? AND ym=?').get(b.dealer_code, b.ym)));
+});
+app.delete('/api/audit/:id', (req, res) => {
+  db.prepare('DELETE FROM store_audit WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 const PORT = process.env.PORT || 4173;
 app.listen(PORT, () => console.log(`Ofero TMM system running at http://localhost:${PORT}`));

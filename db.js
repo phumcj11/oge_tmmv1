@@ -48,6 +48,14 @@ function init() {
       sold INTEGER DEFAULT 0, stock INTEGER DEFAULT 0, note TEXT, updated_at TEXT,
       UNIQUE(dealer_code, ym, model)
     );
+    CREATE TABLE IF NOT EXISTS store_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dealer_code TEXT, dealer_name TEXT, ym TEXT, tier TEXT,
+      checklist TEXT,
+      lead INTEGER DEFAULT 0, test_ride INTEGER DEFAULT 0, quote INTEGER DEFAULT 0, sold INTEGER DEFAULT 0,
+      note TEXT, updated_at TEXT,
+      UNIQUE(dealer_code, ym)
+    );
   `);
   // migrate older DBs that predate the new posm columns
   const cols = db.prepare("PRAGMA table_info(posm)").all().map(c => c.name);

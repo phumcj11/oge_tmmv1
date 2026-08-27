@@ -22,6 +22,17 @@ body.role-viewer .editor-only{display:none!important}
 .soform label{font-size:12px;color:#667085;margin-bottom:4px}
 .soform select,.soform input{padding:8px 10px;border:1px solid #cfd6e0;border-radius:8px;font-family:inherit;font-size:13px}
 .soform .grow{flex:1;min-width:160px} .soform .grow input{width:100%}
+.chklist{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px;margin-top:6px}
+.chk{font-size:13px;display:flex;align-items:center;gap:7px;background:#f7f9fc;padding:7px 10px;border-radius:8px;cursor:pointer}
+.chk input{width:16px;height:16px}
+.funnel{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;padding:8px 0}
+.fn-step{text-align:center;min-width:90px;background:#f7f9fc;border-radius:10px;padding:12px 14px}
+.fn-val{font-size:24px;font-weight:800} .fn-lbl{font-size:12px;color:#667085;margin-top:2px}
+.fn-arrow{color:#98a2b3;font-size:20px;font-weight:700}
+.tierb{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:6px;font-weight:800;font-size:12px;color:#fff}
+.tier-A{background:#1565C0} .tier-B{background:#78909c}
+.rbar{display:inline-block;width:70px;height:8px;background:#eef0f3;border-radius:4px;overflow:hidden;vertical-align:middle;margin-right:6px}
+.rbar div{height:100%;border-radius:4px}
 main{max-width:1200px;margin:0 auto;padding:20px}
 .view.hidden{display:none}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}

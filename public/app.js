@@ -378,7 +378,83 @@ function render(t) {
   else if (t === 'events') renderEvents();
   else if (t === 'posm') renderPosm();
   else if (t === 'sellout') renderSellout();
+  else if (t === 'audit') renderAudit();
   else if (t === 'users') renderUsers();
+}
+
+// ================= STORE AUDIT (มาตรฐานร้าน) =================
+let auditMonth = null;
+async function renderAudit() {
+  const el = $('#audit');
+  const [items, dealers, allSum] = await Promise.all([api('/api/audit/items'), api('/api/dealers'), api('/api/audit/summary')]);
+  if (!auditMonth) auditMonth = (allSum.months && allSum.months[0]) || new Date().toISOString().slice(0, 7);
+  const [sum, rows] = await Promise.all([api('/api/audit/summary?month=' + auditMonth), api('/api/audit?month=' + auditMonth)]);
+  const f = sum.funnel || {};
+  const dealerOpts = dealers.map(d => `<option value="${esc(d.code)}">${esc(d.name)} (${esc(d.code)})</option>`).join('');
+  const funnelStep = (label, val, color) => `<div class="fn-step"><div class="fn-val" style="color:${color}">${(val||0).toLocaleString()}</div><div class="fn-lbl">${label}</div></div>`;
+  const tierBadge = t => `<span class="tierb tier-${t}">${t}</span>`;
+  el.innerHTML = `
+  <div class="toolbar" style="margin-bottom:14px">
+    <b>เดือน:</b> <input type="month" id="auMonth" value="${auditMonth}">
+    <span class="muted">ประเมินมาตรฐานร้าน (A/B) + funnel: สอบถาม → ทดลองขับ → เสนอราคา → ปิดการขาย</span>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="l">ร้านที่ประเมิน</div><div class="v">${sum.count||0}</div><div class="s">A: ${(sum.byTier||[]).find(t=>t.tier==='A')?.count||0} · B: ${(sum.byTier||[]).find(t=>t.tier==='B')?.count||0}</div></div>
+    <div class="kpi"><div class="l">ความพร้อมเฉลี่ย</div><div class="v" style="color:${sum.avgReadiness>=80?'#2e7d32':'#ef6c00'}">${sum.avgReadiness||0}%</div><div class="s">ตามมาตรฐาน</div></div>
+    <div class="kpi"><div class="l">Conversion</div><div class="v" style="color:#1565C0">${sum.conversion||0}%</div><div class="s">ปิดการขาย ÷ สอบถาม</div></div>
+    <div class="kpi"><div class="l">Test Ride</div><div class="v">${(f.testRide||0).toLocaleString()}</div><div class="s">ครั้ง</div></div>
+  </div>
+  <div class="card"><h2>🔻 Funnel รวม (เดือน ${auditMonth})</h2>
+    <div class="funnel">${funnelStep('สอบถาม (Lead)',f.lead,'#1565C0')}<span class="fn-arrow">→</span>${funnelStep('ทดลองขับ',f.testRide,'#00897B')}<span class="fn-arrow">→</span>${funnelStep('เสนอราคา',f.quote,'#6A1B9A')}<span class="fn-arrow">→</span>${funnelStep('ปิดการขาย',f.sold,'#2e7d32')}</div></div>
+  <div class="card editor-only"><h2>➕ ประเมินร้าน / บันทึก funnel</h2>
+    <div class="soform">
+      <div><label>Dealer</label><select id="auDealer">${dealerOpts}</select></div>
+      <div><label>ระดับร้าน</label><select id="auTier"><option value="A">A (SR)</option><option value="B" selected>B</option></select></div>
+    </div>
+    <div style="margin:12px 0"><label style="font-size:12px;color:#667085">เช็กลิสต์มาตรฐาน (ติ๊กที่ผ่าน)</label>
+      <div class="chklist">${items.map(i=>`<label class="chk"><input type="checkbox" class="au-chk" data-k="${i.k}"> ${esc(i.label)}</label>`).join('')}</div></div>
+    <div class="soform">
+      <div><label>สอบถาม (Lead)</label><input id="auLead" type="number" min="0" value="0"></div>
+      <div><label>ทดลองขับ</label><input id="auTest" type="number" min="0" value="0"></div>
+      <div><label>เสนอราคา</label><input id="auQuote" type="number" min="0" value="0"></div>
+      <div><label>ปิดการขาย</label><input id="auSold" type="number" min="0" value="0"></div>
+      <div class="grow"><label>หมายเหตุ</label><input id="auNote" placeholder="(ถ้ามี)"></div>
+      <div><label>&nbsp;</label><button class="btn" id="auSave">บันทึก</button></div>
+    </div>
+    <div class="muted" style="margin-top:6px">* บันทึกซ้ำ Dealer+เดือนเดิม = อัปเดตทับ · ระดับร้านจะ sync ไปที่ทะเบียน Dealer</div>
+  </div>
+  <div class="card"><div class="toolbar"><h2 style="margin:0">รายการประเมิน (${rows.length})</h2><span class="spacer"></span>
+    <button class="btn ghost" id="auExport">⬇ Export CSV</button></div>
+    <div class="scroll"><table id="auTable">
+      <tr><th>ร้าน</th><th>ระดับ</th><th>ความพร้อม</th><th class="num">Lead</th><th class="num">Test</th><th class="num">เสนอราคา</th><th class="num">ปิด</th><th class="num">Conv.</th><th></th></tr>
+      ${rows.length ? rows.map(r => `<tr data-id="${r.id}">
+        <td>${esc(r.dealer_name)}<small class="sub">${esc(r.dealer_code)}</small></td>
+        <td>${tierBadge(r.tier)}</td>
+        <td><div class="rbar"><div style="width:${r.readiness}%;background:${r.readiness>=80?'#2e7d32':r.readiness>=50?'#ef6c00':'#e53935'}"></div></div><small>${r.readiness}%</small></td>
+        <td class="num">${r.lead}</td><td class="num">${r.test_ride}</td><td class="num">${r.quote}</td><td class="num">${r.sold}</td>
+        <td class="num"><b>${r.conversion}%</b></td>
+        <td><button class="btn sm del danger f-del">ลบ</button></td></tr>`).join('')
+      : '<tr><td colspan="9" class="muted">ยังไม่มีการประเมินเดือนนี้ — เพิ่มด้านบน</td></tr>'}
+    </table></div></div>`;
+  $('#auMonth').addEventListener('change', e => { auditMonth = e.target.value; renderAudit(); });
+  $('#auExport').addEventListener('click', () => exportCSV('store_audit_' + auditMonth + '.csv',
+    [{key:'dealer_code',label:'รหัส'},{key:'dealer_name',label:'ร้าน'},{key:'tier',label:'ระดับ'},{key:'readiness',label:'ความพร้อม%'},
+     {key:'lead',label:'Lead'},{key:'test_ride',label:'TestRide'},{key:'quote',label:'เสนอราคา'},{key:'sold',label:'ปิด'},{key:'conversion',label:'Conv%'}], rows));
+  const save = $('#auSave');
+  if (save) save.addEventListener('click', async () => {
+    const checklist = {};
+    document.querySelectorAll('.au-chk').forEach(c => { if (c.checked) checklist[c.dataset.k] = true; });
+    const body = { dealer_code: $('#auDealer').value, tier: $('#auTier').value, ym: auditMonth, checklist,
+      lead: +$('#auLead').value, test_ride: +$('#auTest').value, quote: +$('#auQuote').value, sold: +$('#auSold').value, note: $('#auNote').value };
+    const d = await api('/api/audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (d.id) { toast('บันทึกการประเมินแล้ว'); renderAudit(); }
+  });
+  el.querySelectorAll('.f-del').forEach(b => b.addEventListener('click', async e => {
+    const id = e.target.closest('tr').dataset.id;
+    if (!confirm('ลบการประเมินนี้?')) return;
+    const d = await del('/api/audit/' + id);
+    if (d.ok) { toast('ลบแล้ว'); renderAudit(); }
+  }));
 }
 
 // ================= SELL-OUT & STOCK =================
