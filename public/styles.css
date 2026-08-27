@@ -109,6 +109,22 @@ input,select,textarea{transition:border-color .12s,box-shadow .12s}
 .b-out{background:#fff3e0;color:#ef6c00} .b-reuse{background:#e9f8e0;color:#2E7D32} .b-cons{background:#fce4ec;color:#c2185b}
 .tier-A{background:#e8f5e9;color:#2e7d32}.tier-B{background:#fff8e1;color:#f9a825}.tier-C{background:#fce4ec;color:#c2185b}
 .scroll{overflow-x:auto}
+.kboard{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:800px){.kboard{grid-template-columns:1fr 1fr}}
+.kcol{background:#f4f6f5;border-radius:12px;padding:8px;min-height:120px}
+.kcol-h{font-size:13px;font-weight:700;padding:8px 8px 10px;display:flex;align-items:center;justify-content:space-between}
+.kcount{background:#fff;border-radius:20px;padding:1px 9px;font-size:12px;color:#667085}
+.kcol-body{display:flex;flex-direction:column;gap:8px;min-height:60px;transition:background .1s;border-radius:8px;padding:2px}
+.kcol-body.over{background:#e2f2d7;outline:2px dashed #6FD749}
+.kcard{background:#fff;border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;border:1px solid #eef0ee}
+.kcard:hover{box-shadow:var(--shadow-lg)} .kcard.drag{opacity:.5}
+.kc-name{font-weight:700;font-size:13px;margin-bottom:4px}
+.kc-meta{font-size:11.5px;color:#667085;margin-top:2px}
+.kc-prog{display:flex;align-items:center;gap:6px;margin:7px 0} .kc-prog .rbar{height:7px}
+.kc-tags{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:7px}
+.kc-fn{font-size:11px;color:#667085}
+.perf-sec{background:#fafbfa;border:1px solid #eef0ee;border-radius:14px;padding:16px;margin-bottom:16px}
+.perf-sec h4{margin:0 0 12px;font-size:14px}
 .subnav{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;background:#fff;padding:6px;border-radius:12px;box-shadow:var(--shadow);width:fit-content;max-width:100%}
 .subnav .sub{border:none;background:transparent;padding:8px 16px;border-radius:9px;font-size:13.5px;cursor:pointer;font-family:inherit;color:#475467;font-weight:500;transition:all .12s}
 .subnav .sub:hover{background:#f2f4f2} .subnav .sub.on{background:#111;color:#fff}

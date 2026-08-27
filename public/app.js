@@ -407,11 +407,11 @@ async function renderEvents() {
     ${kpi('Training (เป้า vs ผล)', act.train, tgt.train, 'คน')}
   </div>
   <div class="card"><div class="toolbar"><h2 style="margin:0">🎪 กิจกรรม ARM</h2>
-    <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button></div>
+    <div class="viewtog"><button class="vt ${eventView==='list'?'on':''}" id="vlist">📋 ตาราง</button><button class="vt ${eventView==='calendar'?'on':''}" id="vcal">📅 ปฏิทิน</button><button class="vt ${eventView==='board'?'on':''}" id="vboard">🎯 Board</button><button class="vt ${eventView==='performance'?'on':''}" id="vperf">📊 Performance</button></div>
     <span class="spacer"></span>
     <button class="btn editor-only" id="enew">➕ กิจกรรมใหม่</button>
     <button class="btn ghost" id="eexport">⬇ Export CSV</button></div>
-    ${eventView==='calendar' ? buildCalendar() : `<div class="scroll"><table id="etable">
+    ${eventView==='calendar' ? buildCalendar() : eventView==='board' ? buildBoard() : eventView==='performance' ? buildPerformance() : `<div class="scroll"><table id="etable">
       <tr><th>กิจกรรม</th><th>ร้าน/สาขา</th><th>ประเภท</th><th>ระดับ</th><th>วันที่</th><th>สถานะ</th>
         <th class="num">Sell-out</th><th class="num">Lead</th><th class="num">Test</th><th class="num">Train</th><th></th></tr>
       ${eventCache.length ? eventCache.map(e => {
@@ -430,7 +430,10 @@ async function renderEvents() {
     </table></div>`}</div>`;
   $('#vlist').addEventListener('click', () => { eventView='list'; renderEvents(); });
   $('#vcal').addEventListener('click', () => { eventView='calendar'; renderEvents(); });
+  $('#vboard').addEventListener('click', () => { eventView='board'; renderEvents(); });
+  $('#vperf').addEventListener('click', () => { eventView='performance'; renderEvents(); });
   if (eventView==='calendar') wireCalendar();
+  if (eventView==='board') wireBoard();
   const enew = $('#enew');
   if (enew) enew.addEventListener('click', () => openEventEditor(null));
   $('#eexport').addEventListener('click', () => exportCSV('events.csv',
@@ -481,6 +484,72 @@ function wireCalendar() {
       const iso = calMonth + '-' + cell.dataset.day;
       openEventEditor({ start_date: iso, end_date: iso });
     }));
+}
+
+// ---- Event Board (Kanban) ----
+function apReadiness(e) { const ap = Array.isArray(e.action_plan) ? e.action_plan : []; return ap.length ? Math.round(100 * ap.filter(a => a.done).length / ap.length) : null; }
+function buildBoard() {
+  const cols = [['planned','วางแผน','#78909c'],['confirmed','ยืนยันแล้ว','#2E9E1E'],['done','จัดเสร็จ','#2e7d32'],['cancelled','ยกเลิก','#c62828']];
+  const card = e => { const r = apReadiness(e);
+    return `<div class="kcard" draggable="${currentUser.role==='viewer'?'false':'true'}" data-id="${e.id}">
+      <div class="kc-name">${esc(e.activity_name||EV_TYPE[e.type]||'กิจกรรม')}</div>
+      <div class="kc-meta">🏪 ${esc(e.dealer_name||e.company||'-')}${e.tier?' · '+e.tier:''}</div>
+      <div class="kc-meta">📅 ${esc(e.start_date||e.event_date||'-')}${e.owner?' · 👤 '+esc(e.owner):''}</div>
+      ${r!==null?`<div class="kc-prog"><div class="rbar" style="flex:1;width:auto"><div style="width:${r}%;background:${r>=80?'#2e7d32':r>=40?'#ef6c00':'#e53935'}"></div></div><small>${r}%</small></div>`:''}
+      <div class="kc-tags"><span class="badge b-reuse">${EV_TYPE[e.type]||e.type}</span><span class="kc-fn">L ${e.leads||0}/${e.target_lead||0} · ปิด ${e.sales_units||0}/${e.target_sellout||0}</span></div>
+    </div>`; };
+  return `<div class="kboard">${cols.map(([st,label,c]) => {
+    const items = eventCache.filter(e => (e.status||'planned') === st);
+    return `<div class="kcol"><div class="kcol-h" style="border-top:3px solid ${c}">${label} <span class="kcount">${items.length}</span></div>
+      <div class="kcol-body" data-status="${st}">${items.map(card).join('') || '<div class="muted" style="padding:12px 4px;font-size:12px">—</div>'}</div></div>`;
+  }).join('')}</div>
+  <div class="muted" style="margin-top:10px">🖱️ ลากการ์ดข้ามคอลัมน์เพื่อเปลี่ยนสถานะ · คลิกการ์ดเพื่อดู/แก้ไข · แถบ % = ความคืบหน้า Action Plan (track ทีมได้)</div>`;
+}
+function wireBoard() {
+  document.querySelectorAll('#events .kcard').forEach(c => {
+    c.addEventListener('click', () => openEventEditor(eventCache.find(x => x.id == c.dataset.id)));
+    c.addEventListener('dragstart', e => { e.dataTransfer.setData('id', c.dataset.id); c.classList.add('drag'); });
+    c.addEventListener('dragend', () => c.classList.remove('drag'));
+  });
+  document.querySelectorAll('#events .kcol-body').forEach(col => {
+    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('over'); });
+    col.addEventListener('dragleave', () => col.classList.remove('over'));
+    col.addEventListener('drop', async e => {
+      e.preventDefault(); col.classList.remove('over');
+      const id = e.dataTransfer.getData('id'), status = col.dataset.status;
+      const ev = eventCache.find(x => x.id == id); if (!ev || ev.status === status) return;
+      await api('/api/events/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) });
+      toast('ย้ายเป็น ' + (EV_STATUS[status]||status)); renderEvents();
+    });
+  });
+}
+// ---- Event Performance / ROI ----
+function buildPerformance() {
+  const evs = eventCache, sum = k => evs.reduce((s, e) => s + (+e[k]||0), 0);
+  const budget = sum('budget');
+  const tgt = { sellout:sum('target_sellout'), lead:sum('target_lead'), test:sum('target_testride'), train:sum('target_training') };
+  const act = { sellout:sum('sales_units'), lead:sum('leads'), test:sum('test_ride'), train:sum('act_training') };
+  const cpl = act.lead ? Math.round(budget/act.lead) : 0, cps = act.sellout ? Math.round(budget/act.sellout) : 0;
+  const byStatus = {}; evs.forEach(e => byStatus[e.status||'planned'] = (byStatus[e.status||'planned']||0)+1);
+  const byType = {}; evs.forEach(e => byType[e.type||'other'] = (byType[e.type||'other']||0)+1);
+  const coveredDealers = new Set(evs.filter(e => e.dealer_code).map(e => e.dealer_code)).size;
+  const coveredRegions = new Set(evs.map(e => PROV_REGION[e.province] || 'อื่นๆ')).size;
+  const fstep = (l,a,t,c) => `<div class="fn-step"><div class="fn-val" style="color:${c}">${a}<small style="font-size:13px;color:#98a2b3">/${t}</small></div><div class="fn-lbl">${l}</div></div>`;
+  const bar = (label,val,max,color) => `<div class="bar-row"><div class="bar-lbl">${label}</div><div class="bar-track"><div class="bar-fill" style="width:${max?(100*val/max).toFixed(0):0}%;background:${color}"></div></div><div class="bar-val">${val}</div></div>`;
+  const maxSt = Math.max(1, ...Object.values(byStatus)), maxTy = Math.max(1, ...Object.values(byType));
+  return `
+  <div class="kpis" style="margin:6px 0 16px">
+    <div class="kpi"><div class="l">งบผูกพันรวม</div><div class="v">${baht(budget)}</div><div class="s">บาท · ${evs.length} งาน</div></div>
+    <div class="kpi"><div class="l">ต้นทุน/Lead</div><div class="v" style="color:#2E9E1E">${cpl?baht(cpl):'-'}</div><div class="s">งบ ÷ Lead จริง</div></div>
+    <div class="kpi"><div class="l">ต้นทุน/ปิดการขาย</div><div class="v" style="color:#6A1B9A">${cps?baht(cps):'-'}</div><div class="s">งบ ÷ ปิดจริง</div></div>
+    <div class="kpi"><div class="l">Coverage</div><div class="v">${coveredDealers} ร้าน</div><div class="s">${coveredRegions} ภาคมีงาน</div></div>
+  </div>
+  <div class="perf-sec"><h4>🔻 Funnel รวม (ผลจริง / เป้า)</h4>
+    <div class="funnel">${fstep('สอบถาม (Lead)',act.lead,tgt.lead,'#2E9E1E')}<span class="fn-arrow">→</span>${fstep('ทดลองขับ',act.test,tgt.test,'#00897B')}<span class="fn-arrow">→</span>${fstep('ปิดการขาย',act.sellout,tgt.sellout,'#2e7d32')}<span class="fn-arrow">→</span>${fstep('อบรม',act.train,tgt.train,'#6A1B9A')}</div></div>
+  <div class="grid2">
+    <div class="perf-sec"><h4>📌 งานตามสถานะ</h4>${Object.entries(byStatus).map(([s,v])=>bar(EV_STATUS[s]||s,v,maxSt,s==='done'?'#2e7d32':s==='cancelled'?'#c62828':'#2E9E1E')).join('')}</div>
+    <div class="perf-sec"><h4>🏷️ งานตามประเภท</h4>${Object.entries(byType).map(([t,v])=>bar(EV_TYPE[t]||t,v,maxTy,'#6A1B9A')).join('')}</div>
+  </div>`;
 }
 
 let evBudget = [], evStock = [], evAction = [], evManpower = [];
