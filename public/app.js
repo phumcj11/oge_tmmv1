@@ -62,7 +62,7 @@ async function renderDashboard() {
     <div class="kpi"><div class="l">Dealer ที่ขาย</div><div class="v">${t.active_dealers}</div><div class="s">จาก ${t.dealers}</div></div>
   </div>
   <div class="card"><h2>💰 Sell-in ตามรุ่นสินค้า</h2>
-    ${bars(d.products.map(p=>({label:p.model,v:p.sellin,color:'#1565C0'})),i=>i.v,v=>baht(v)+' ฿')}</div>
+    ${bars(d.products.map(p=>({label:p.model,v:p.sellin,color:'#2E9E1E'})),i=>i.v,v=>baht(v)+' ฿')}</div>
   <div class="grid2">
     <div class="card"><h2>🗺️ Sell-in ตามภาค (แผนที่)</h2>
       <div class="mapwrap"><div id="thmap" class="thmap"></div>
@@ -81,7 +81,7 @@ async function renderDashboard() {
   loadMap(d.region);
 }
 const RID = { 'กลาง':'klang','อีสาน':'isan','เหนือ':'nuea','กรุงเทพ ปริมณฑล':'bkk','ใต้':'tai' };
-function regColor(k){ return {klang:'#1565C0',isan:'#00897B',nuea:'#6A1B9A',bkk:'#F9A825',tai:'#C62828'}[RID[k]]||'#1565C0'; }
+function regColor(k){ return {klang:'#2E9E1E',isan:'#00897B',nuea:'#6A1B9A',bkk:'#F9A825',tai:'#C62828'}[RID[k]]||'#2E9E1E'; }
 async function loadMap(region) {
   const host = $('#thmap'); if (!host) return;
   try {
@@ -169,7 +169,7 @@ function drawDealers() {
 let eventCache = [], eventProducts = [];
 let eventView = 'list', calMonth = null;
 const EV_TYPE = { activation:'กิจกรรมหน้าร้าน', training:'อบรม', testride:'ทดลองขับ', other:'อื่นๆ' };
-const EV_TCOLOR = { activation:'#1565C0', training:'#6A1B9A', testride:'#00897B', other:'#78909c' };
+const EV_TCOLOR = { activation:'#2E9E1E', training:'#6A1B9A', testride:'#00897B', other:'#78909c' };
 const EV_DEPT = ['Branding', 'Back Office'];
 const EV_STATUS = { planned:'วางแผน', confirmed:'ยืนยันแล้ว', done:'จัดเสร็จ', cancelled:'ยกเลิก' };
 const achv = (a, t) => t > 0 ? Math.round(100 * a / t) : 0;
@@ -202,7 +202,7 @@ async function renderEvents() {
       ${eventCache.length ? eventCache.map(e => {
         const cell = (a, t) => `<td class="num" title="ผล/เป้า">${a||0}<small style="color:#98a2b3">/${t||0}</small></td>`;
         return `<tr data-id="${e.id}">
-        <td><b class="lnk f-edit" style="color:#1565C0;cursor:pointer">${esc(e.activity_name || '(ไม่มีชื่อ)')}</b><small class="sub">${esc(e.dept||'')}${e.owner?' · '+esc(e.owner):''}</small></td>
+        <td><b class="lnk f-edit" style="color:#2E9E1E;cursor:pointer">${esc(e.activity_name || '(ไม่มีชื่อ)')}</b><small class="sub">${esc(e.dept||'')}${e.owner?' · '+esc(e.owner):''}</small></td>
         <td>${esc(e.dealer_name || e.company || '-')}<small class="sub">${esc(e.branch||e.province||'')}</small></td>
         <td><span class="badge b-reuse">${EV_TYPE[e.type]||e.type||'-'}</span></td>
         <td>${e.tier?`<span class="tierb tier-${e.tier}">${e.tier}</span>`:'-'}</td>
@@ -629,11 +629,11 @@ async function renderAudit() {
   <div class="kpis">
     <div class="kpi"><div class="l">ร้านที่ประเมิน</div><div class="v">${sum.count||0}</div><div class="s">A: ${(sum.byTier||[]).find(t=>t.tier==='A')?.count||0} · B: ${(sum.byTier||[]).find(t=>t.tier==='B')?.count||0}</div></div>
     <div class="kpi"><div class="l">ความพร้อมเฉลี่ย</div><div class="v" style="color:${sum.avgReadiness>=80?'#2e7d32':'#ef6c00'}">${sum.avgReadiness||0}%</div><div class="s">ตามมาตรฐาน</div></div>
-    <div class="kpi"><div class="l">Conversion</div><div class="v" style="color:#1565C0">${sum.conversion||0}%</div><div class="s">ปิดการขาย ÷ สอบถาม</div></div>
+    <div class="kpi"><div class="l">Conversion</div><div class="v" style="color:#2E9E1E">${sum.conversion||0}%</div><div class="s">ปิดการขาย ÷ สอบถาม</div></div>
     <div class="kpi"><div class="l">Test Ride</div><div class="v">${(f.testRide||0).toLocaleString()}</div><div class="s">ครั้ง</div></div>
   </div>
   <div class="card"><h2>🔻 Funnel รวม (เดือน ${auditMonth})</h2>
-    <div class="funnel">${funnelStep('สอบถาม (Lead)',f.lead,'#1565C0')}<span class="fn-arrow">→</span>${funnelStep('ทดลองขับ',f.testRide,'#00897B')}<span class="fn-arrow">→</span>${funnelStep('เสนอราคา',f.quote,'#6A1B9A')}<span class="fn-arrow">→</span>${funnelStep('ปิดการขาย',f.sold,'#2e7d32')}</div></div>
+    <div class="funnel">${funnelStep('สอบถาม (Lead)',f.lead,'#2E9E1E')}<span class="fn-arrow">→</span>${funnelStep('ทดลองขับ',f.testRide,'#00897B')}<span class="fn-arrow">→</span>${funnelStep('เสนอราคา',f.quote,'#6A1B9A')}<span class="fn-arrow">→</span>${funnelStep('ปิดการขาย',f.sold,'#2e7d32')}</div></div>
   <div class="card editor-only"><h2>➕ ประเมินร้าน / บันทึก funnel</h2>
     <div class="soform">
       <div><label>Dealer</label><select id="auDealer">${dealerOpts}</select></div>
