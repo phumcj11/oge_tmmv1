@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เข้าสู่ระบบ — Ofero TMM</title>
+<style>
+:root{--blue:#1565C0;--dark:#0d47a1;--ink:#1a2027;--muted:#667085;--line:#e4e7ec;--bg:#eef1f5}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+  font-family:Tahoma,'Segoe UI','Sarabun',sans-serif;background:linear-gradient(135deg,#0d47a1,#1976d2);color:var(--ink)}
+.card{background:#fff;border-radius:16px;padding:34px 30px;width:min(380px,92vw);box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.brand{font-size:22px;font-weight:800;color:var(--dark);text-align:center;margin-bottom:4px}
+.brand span{color:var(--blue)}
+.sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:22px}
+label{display:block;font-size:13px;color:var(--muted);margin:14px 0 5px}
+input{width:100%;padding:11px 13px;border:1px solid #cfd6e0;border-radius:9px;font-size:14px;font-family:inherit}
+input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(21,101,192,.12)}
+button{width:100%;margin-top:22px;padding:12px;border:none;border-radius:9px;background:var(--blue);color:#fff;
+  font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+button:hover{background:var(--dark)} button:disabled{opacity:.6;cursor:default}
+.err{background:#fdecea;color:#c62828;border-radius:8px;padding:9px 12px;font-size:13px;margin-top:16px;display:none}
+.err.show{display:block}
+.foot{text-align:center;color:#98a2b3;font-size:11px;margin-top:20px}
+</style>
+</head>
+<body>
+<form class="card" id="loginForm">
+  <div class="brand">⚡ Ofero <span>TMM System</span></div>
+  <div class="sub">เข้าสู่ระบบเพื่อใช้งาน</div>
+  <label for="u">ชื่อผู้ใช้</label>
+  <input id="u" name="username" autocomplete="username" autofocus required>
+  <label for="p">รหัสผ่าน</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <div class="err" id="err"></div>
+  <button type="submit" id="btn">เข้าสู่ระบบ</button>
+  <div class="foot">ระบบบริหาร Trade Marketing · Ofero</div>
+</form>
+<script>
+const form = document.getElementById('loginForm');
+const err = document.getElementById('err');
+const btn = document.getElementById('btn');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err.classList.remove('show'); btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: document.getElementById('u').value, password: document.getElementById('p').value })
+    });
+    const d = await r.json();
+    if (r.ok) { location.href = '/'; return; }
+    err.textContent = d.error || 'เข้าสู่ระบบไม่สำเร็จ'; err.classList.add('show');
+  } catch (_) { err.textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; err.classList.add('show'); }
+  btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ';
+});
+</script>
+</body>
+</html>

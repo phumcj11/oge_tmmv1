@@ -1,5 +1,6 @@
 // SQLite data layer for the Ofero TMM system
 const Database = require('better-sqlite3');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -34,11 +35,26 @@ function init() {
       date_out TEXT, due_date TEXT, date_back TEXT, person TEXT, note TEXT
     );
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE IF NOT EXISTS users (
+      username TEXT PRIMARY KEY, name TEXT, salt TEXT, hash TEXT,
+      role TEXT DEFAULT 'viewer', created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY, username TEXT, expires INTEGER
+    );
   `);
   // migrate older DBs that predate the new posm columns
   const cols = db.prepare("PRAGMA table_info(posm)").all().map(c => c.name);
   if (!cols.includes('min_stock')) db.exec('ALTER TABLE posm ADD COLUMN min_stock INTEGER DEFAULT 0');
   if (!cols.includes('unit_value')) db.exec('ALTER TABLE posm ADD COLUMN unit_value INTEGER DEFAULT 0');
+  // create a default admin on first run (persists across data reseeds)
+  if (db.prepare('SELECT COUNT(*) c FROM users').get().c === 0) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.scryptSync('ofero1234', salt, 64).toString('hex');
+    db.prepare('INSERT INTO users (username,name,salt,hash,role,created_at) VALUES (?,?,?,?,?,?)')
+      .run('admin', 'ผู้ดูแลระบบ', salt, hash, 'admin', new Date().toISOString());
+    console.log('>> สร้าง user เริ่มต้น: admin / ofero1234  — กรุณาเปลี่ยนรหัสหลัง login ครั้งแรก');
+  }
 }
 
 function seed() {

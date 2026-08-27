@@ -1,14 +1,20 @@
 // Ofero TMM System — frontend
 const $ = s => document.querySelector(s);
 const baht = n => (Math.round(n || 0)).toLocaleString('en-US');
-const api = (u, opt) => fetch(u, opt).then(r => r.json());
+let currentUser = null;
+const api = (u, opt) => fetch(u, opt).then(async r => {
+  if (r.status === 401) { location.href = '/login.html'; return new Promise(() => {}); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok && d.error) toast(d.error);
+  return d;
+});
 let toastT;
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800);
 }
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-const del = u => fetch(u, { method: 'DELETE' }).then(r => r.json());
+const del = u => api(u, { method: 'DELETE' });
 function exportCSV(filename, cols, rows) {
   const head = cols.map(c => c.label).join(',');
   const body = rows.map(r => cols.map(c => {
@@ -371,5 +377,79 @@ function render(t) {
   else if (t === 'dealers') renderDealers();
   else if (t === 'events') renderEvents();
   else if (t === 'posm') renderPosm();
+  else if (t === 'users') renderUsers();
 }
-render('dashboard');
+
+// ================= AUTH / USER =================
+function renderUserbox() {
+  const roleTxt = { admin: 'ผู้ดูแลระบบ', editor: 'แก้ไขได้', viewer: 'ดูอย่างเดียว' }[currentUser.role] || currentUser.role;
+  $('#userbox').innerHTML = `<span class="uname">${esc(currentUser.name)} <small>· ${roleTxt}</small></span>
+    <button class="btn sm ghost" id="pwBtn">เปลี่ยนรหัส</button>
+    <button class="btn sm ghost" id="logoutBtn">ออกจากระบบ</button>`;
+  $('#logoutBtn').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); location.href = '/login.html'; });
+  $('#pwBtn').addEventListener('click', () => {
+    const cur = prompt('รหัสผ่านเดิม:'); if (cur === null) return;
+    const nw = prompt('รหัสผ่านใหม่ (อย่างน้อย 6 ตัว):'); if (nw === null) return;
+    api('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current: cur, next: nw }) })
+      .then(d => { if (d.ok) toast('เปลี่ยนรหัสผ่านแล้ว'); });
+  });
+}
+async function renderUsers() {
+  if (currentUser.role !== 'admin') { $('#users').innerHTML = '<div class="card muted">เฉพาะผู้ดูแลระบบ</div>'; return; }
+  const users = await api('/api/users');
+  const roles = ['admin', 'editor', 'viewer'];
+  const roleTxt = { admin: 'ผู้ดูแลระบบ', editor: 'แก้ไขได้', viewer: 'ดูอย่างเดียว' };
+  $('#users').innerHTML = `
+  <div class="card">
+    <div class="toolbar"><h2 style="margin:0">👤 จัดการผู้ใช้ & สิทธิ์</h2>
+      <span class="muted">admin = จัดการทุกอย่าง · editor = แก้ข้อมูลได้ · viewer = ดูอย่างเดียว</span>
+      <span class="spacer"></span><button class="btn ghost" id="uadd">➕ เพิ่มผู้ใช้</button></div>
+    <div class="scroll"><table id="utable">
+      <tr><th>ชื่อผู้ใช้</th><th>ชื่อ</th><th>สิทธิ์</th><th>สร้างเมื่อ</th><th>จัดการ</th></tr>
+      ${users.map(u => `<tr data-u="${esc(u.username)}">
+        <td><b>${esc(u.username)}</b></td><td>${esc(u.name)}</td>
+        <td><select class="cell f-role">${roles.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleTxt[r]}</option>`).join('')}</select></td>
+        <td><small class="sub">${esc((u.created_at || '').slice(0, 10))}</small></td>
+        <td style="white-space:nowrap">
+          <button class="btn sm f-save">บันทึก</button>
+          <button class="btn sm ghost f-pw">ตั้งรหัสใหม่</button>
+          ${u.username === currentUser.username ? '' : '<button class="btn sm del danger f-del">ลบ</button>'}
+        </td></tr>`).join('')}
+    </table></div></div>`;
+  $('#uadd').addEventListener('click', async () => {
+    const username = prompt('ชื่อผู้ใช้ (username):'); if (!username) return;
+    const name = prompt('ชื่อ-นามสกุล:') || username;
+    const role = (prompt('สิทธิ์ (admin / editor / viewer):', 'viewer') || 'viewer').trim();
+    const password = prompt('รหัสผ่านเริ่มต้น (อย่างน้อย 6 ตัว):'); if (!password) return;
+    const d = await api('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, name, role, password }) });
+    if (d.username) { toast('เพิ่มผู้ใช้ ' + d.username); renderUsers(); }
+  });
+  $('#utable').querySelectorAll('.f-save').forEach(b => b.addEventListener('click', async e => {
+    const tr = e.target.closest('tr'); const username = tr.dataset.u;
+    const d = await api('/api/users/' + encodeURIComponent(username), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: tr.querySelector('.f-role').value }) });
+    if (d.username) toast('บันทึกสิทธิ์ ' + username);
+  }));
+  $('#utable').querySelectorAll('.f-pw').forEach(b => b.addEventListener('click', async e => {
+    const username = e.target.closest('tr').dataset.u;
+    const pw = prompt('รหัสผ่านใหม่ของ ' + username + ' (อย่างน้อย 6 ตัว):'); if (!pw) return;
+    const d = await api('/api/users/' + encodeURIComponent(username), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    if (d.username) toast('ตั้งรหัสใหม่ให้ ' + username + ' แล้ว');
+  }));
+  $('#utable').querySelectorAll('.f-del').forEach(b => b.addEventListener('click', async e => {
+    const username = e.target.closest('tr').dataset.u;
+    if (!confirm('ลบผู้ใช้ ' + username + ' ?')) return;
+    const d = await del('/api/users/' + encodeURIComponent(username));
+    if (d.ok) { toast('ลบ ' + username + ' แล้ว'); renderUsers(); }
+  }));
+}
+async function init() {
+  let me;
+  try { const r = await fetch('/api/me'); if (!r.ok) { location.href = '/login.html'; return; } me = await r.json(); }
+  catch (_) { location.href = '/login.html'; return; }
+  currentUser = me;
+  document.body.classList.toggle('role-viewer', me.role === 'viewer');
+  if (me.role === 'admin') $('#usersTab').style.display = '';
+  renderUserbox();
+  render('dashboard');
+}
+init();

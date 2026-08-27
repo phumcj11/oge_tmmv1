@@ -1,10 +1,68 @@
 // Ofero TMM system — Express API server
 const express = require('express');
+const crypto = require('crypto');
 const path = require('path');
 const db = require('./db');
 
 const app = express();
 app.use(express.json());
+
+// ================= AUTH =================
+const DAY = 24 * 60 * 60 * 1000;
+const SESSION_TTL = 30 * DAY;
+function hashPw(pw, salt) { return crypto.scryptSync(pw, salt, 64).toString('hex'); }
+function verifyPw(pw, salt, hash) {
+  const h = hashPw(pw, salt);
+  return h.length === hash.length && crypto.timingSafeEqual(Buffer.from(h), Buffer.from(hash));
+}
+function parseCookies(req) {
+  return Object.fromEntries((req.headers.cookie || '').split(';')
+    .map(c => c.trim().split('=')).filter(p => p[0]).map(p => [p[0], decodeURIComponent(p.slice(1).join('='))]));
+}
+// attach req.user from session cookie (non-blocking)
+app.use((req, res, next) => {
+  const token = parseCookies(req).sid;
+  if (token) {
+    const s = db.prepare('SELECT * FROM sessions WHERE token=?').get(token);
+    if (s && s.expires > Date.now()) req.user = db.prepare('SELECT username,name,role FROM users WHERE username=?').get(s.username);
+    else if (s) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
+  }
+  next();
+});
+// public auth endpoints
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const u = db.prepare('SELECT * FROM users WHERE username=?').get((username || '').trim());
+  if (!u || !verifyPw(password || '', u.salt, u.hash))
+    return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+  const token = crypto.randomBytes(24).toString('hex');
+  db.prepare('INSERT INTO sessions (token,username,expires) VALUES (?,?,?)').run(token, u.username, Date.now() + SESSION_TTL);
+  res.cookie('sid', token, { httpOnly: true, sameSite: 'lax', maxAge: SESSION_TTL });
+  res.json({ username: u.username, name: u.name, role: u.role });
+});
+app.get('/api/me', (req, res) => req.user ? res.json(req.user) : res.status(401).json({ error: 'unauthorized' }));
+app.post('/api/logout', (req, res) => {
+  const token = parseCookies(req).sid;
+  if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
+  res.clearCookie('sid'); res.json({ ok: true });
+});
+// gate: block everything below unless authenticated (login page + assets stay public)
+const PUBLIC_PATHS = new Set(['/login.html', '/login.js', '/styles.css', '/favicon.ico']);
+app.use((req, res, next) => {
+  if (req.user || PUBLIC_PATHS.has(req.path)) return next();
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
+  return res.redirect('/login.html');
+});
+// write-permission gate: viewer is read-only
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE'].includes(req.method) && req.user.role === 'viewer')
+    return res.status(403).json({ error: 'บัญชีนี้เป็นแบบดูอย่างเดียว (viewer) แก้ไขไม่ได้' });
+  next();
+});
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ (admin)' });
+  next();
+}
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Overview / Dashboard ----------
@@ -144,6 +202,56 @@ app.post('/api/posm', (req, res) => {
 app.delete('/api/posm/:code', (req, res) => {
   db.prepare('DELETE FROM posm WHERE code=?').run(req.params.code);
   db.prepare('DELETE FROM posm_moves WHERE posm_code=?').run(req.params.code);
+  res.json({ ok: true });
+});
+
+// ---------- Users (admin only) ----------
+app.get('/api/users', requireAdmin, (req, res) => {
+  res.json(db.prepare('SELECT username,name,role,created_at FROM users ORDER BY created_at').all());
+});
+app.post('/api/users', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const username = (b.username || '').trim();
+  if (!username || !b.password) return res.status(400).json({ error: 'ต้องมี username และรหัสผ่าน' });
+  if (!['admin', 'editor', 'viewer'].includes(b.role)) return res.status(400).json({ error: 'role ไม่ถูกต้อง' });
+  if (db.prepare('SELECT 1 FROM users WHERE username=?').get(username)) return res.status(409).json({ error: 'username นี้มีอยู่แล้ว' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  db.prepare('INSERT INTO users (username,name,salt,hash,role,created_at) VALUES (?,?,?,?,?,?)')
+    .run(username, b.name || username, salt, hashPw(b.password, salt), b.role, new Date().toISOString());
+  res.json({ username, name: b.name || username, role: b.role });
+});
+app.put('/api/users/:username', requireAdmin, (req, res) => {
+  const u = db.prepare('SELECT * FROM users WHERE username=?').get(req.params.username);
+  if (!u) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  const b = req.body || {};
+  const role = ['admin', 'editor', 'viewer'].includes(b.role) ? b.role : u.role;
+  // don't allow removing the last admin
+  if (u.role === 'admin' && role !== 'admin' &&
+      db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c <= 1)
+    return res.status(400).json({ error: 'ต้องมี admin อย่างน้อย 1 คน' });
+  let salt = u.salt, hash = u.hash;
+  if (b.password) { salt = crypto.randomBytes(16).toString('hex'); hash = hashPw(b.password, salt); }
+  db.prepare('UPDATE users SET name=?, role=?, salt=?, hash=? WHERE username=?')
+    .run(b.name ?? u.name, role, salt, hash, u.username);
+  res.json({ username: u.username, name: b.name ?? u.name, role });
+});
+app.delete('/api/users/:username', requireAdmin, (req, res) => {
+  if (req.params.username === req.user.username) return res.status(400).json({ error: 'ลบบัญชีตัวเองไม่ได้' });
+  const u = db.prepare('SELECT * FROM users WHERE username=?').get(req.params.username);
+  if (u && u.role === 'admin' && db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c <= 1)
+    return res.status(400).json({ error: 'ต้องมี admin อย่างน้อย 1 คน' });
+  db.prepare('DELETE FROM users WHERE username=?').run(req.params.username);
+  db.prepare('DELETE FROM sessions WHERE username=?').run(req.params.username);
+  res.json({ ok: true });
+});
+// change own password (any logged-in user)
+app.post('/api/password', (req, res) => {
+  const { current, next: newPw } = req.body || {};
+  const u = db.prepare('SELECT * FROM users WHERE username=?').get(req.user.username);
+  if (!verifyPw(current || '', u.salt, u.hash)) return res.status(400).json({ error: 'รหัสผ่านเดิมไม่ถูกต้อง' });
+  if (!newPw || newPw.length < 6) return res.status(400).json({ error: 'รหัสใหม่ต้องยาวอย่างน้อย 6 ตัว' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  db.prepare('UPDATE users SET salt=?, hash=? WHERE username=?').run(salt, hashPw(newPw, salt), u.username);
   res.json({ ok: true });
 });
 

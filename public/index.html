@@ -14,13 +14,16 @@
     <button class="tab" data-t="dealers">🏪 Dealer</button>
     <button class="tab" data-t="events">🎪 Event</button>
     <button class="tab" data-t="posm">📦 POSM</button>
+    <button class="tab" data-t="users" id="usersTab" style="display:none">👤 ผู้ใช้</button>
   </nav>
+  <div class="userbox" id="userbox"></div>
 </header>
 <main>
   <section id="dashboard" class="view"></section>
   <section id="dealers" class="view hidden"></section>
   <section id="events" class="view hidden"></section>
   <section id="posm" class="view hidden"></section>
+  <section id="users" class="view hidden"></section>
 </main>
 <div id="toast" class="toast"></div>
 <script src="app.js"></script>
