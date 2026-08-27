@@ -173,31 +173,22 @@ function drawDealers() {
     (!tf || d.tier === tf) &&
     (!q || (d.name+d.code+d.province).toLowerCase().includes(q)));
   $('#dcount').textContent = rows.length + ' ราย';
+  const tierChip = t => t ? `<span style="display:inline-block;padding:2px 9px;border-radius:6px;font-weight:700;font-size:12px;color:#fff;background:${t==='A'?'#2E9E1E':t==='B'?'#78909c':'#c2185b'}">${t}</span>` : '<span class="muted">-</span>';
   $('#dtable').innerHTML =
-    `<tr><th>รหัส</th><th>Dealer</th><th>จังหวัด</th><th class="num">Sell-in</th><th class="num">ค้างชำระ</th><th class="num">PO</th>
-      <th>Tier</th><th>เบอร์โทร</th><th>LINE</th><th></th></tr>` +
-    rows.map(d => `<tr data-code="${d.code}">
+    `<tr><th>รหัส</th><th>Dealer</th><th>จังหวัด</th><th class="num">Sell-in</th><th class="num">ค้างชำระ</th><th class="num">PO</th><th>Tier</th><th></th></tr>` +
+    rows.map(d => `<tr data-code="${d.code}" class="d360row" style="cursor:pointer">
       <td>${d.code}</td>
-      <td><b class="lnk d360" style="color:var(--accent);cursor:pointer">${esc(d.name)}</b>${d.sales_rep?`<small class="sub">👤 ${esc(d.sales_rep)}</small>`:''}</td>
+      <td><b style="color:var(--accent)">${esc(d.name)}</b>${d.sales_rep?`<small class="sub">👤 ${esc(d.sales_rep)}</small>`:''}${d.phone?`<small class="sub">📞 ${esc(d.phone)}</small>`:''}</td>
       <td>${esc(d.province)||'-'}</td>
       <td class="num">${baht(d.sellin)}</td>
       <td class="num" style="color:${d.outstanding>0?'#e53935':'#98a2b3'}">${d.outstanding>0?baht(d.outstanding):'-'}</td>
       <td class="num">${d.po}</td>
-      <td><select class="cell f-tier"><option value="">-</option>
-        ${['A','B','C'].map(t=>`<option ${d.tier===t?'selected':''}>${t}</option>`).join('')}</select></td>
-      <td><input class="cell f-phone" value="${esc(d.phone)}" placeholder="เบอร์"></td>
-      <td><input class="cell f-line" value="${esc(d.line)}" placeholder="LINE ID"></td>
-      <td style="white-space:nowrap"><button class="btn sm ghost d360">360°</button>
-        <button class="btn sm f-save">บันทึก</button>
-        <button class="btn sm del danger f-del">ลบ</button></td></tr>`).join('');
-  $('#dtable').querySelectorAll('.d360').forEach(b => b.addEventListener('click', e =>
-    openDealer360(e.target.closest('tr').dataset.code)));
-  $('#dtable').querySelectorAll('.f-save').forEach(b => b.addEventListener('click', async e => {
-    const tr = e.target.closest('tr'); const code = tr.dataset.code;
-    const body = { phone: tr.querySelector('.f-phone').value, line: tr.querySelector('.f-line').value, tier: tr.querySelector('.f-tier').value };
-    const upd = await api('/api/dealers/' + code, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    const i = dealerCache.findIndex(x => x.code === code); dealerCache[i] = upd;
-    toast('บันทึก ' + code + ' แล้ว');
+      <td>${tierChip(d.tier)}</td>
+      <td style="white-space:nowrap;text-align:right"><button class="btn sm ghost">ดู 360°</button>
+        ${currentUser.role==='viewer'?'':'<button class="btn sm del danger f-del">ลบ</button>'}</td></tr>`).join('');
+  $('#dtable').querySelectorAll('.d360row').forEach(tr => tr.addEventListener('click', e => {
+    if (e.target.closest('.f-del')) return;
+    openDealer360(tr.dataset.code);
   }));
   $('#dtable').querySelectorAll('.f-del').forEach(b => b.addEventListener('click', async e => {
     const tr = e.target.closest('tr'); const code = tr.dataset.code;
