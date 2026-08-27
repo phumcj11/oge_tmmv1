@@ -49,7 +49,7 @@ app.post('/api/logout', (req, res) => {
 // gate: block everything below unless authenticated (login page + assets stay public)
 const PUBLIC_PATHS = new Set(['/login.html', '/login.js', '/styles.css', '/favicon.ico']);
 app.use((req, res, next) => {
-  if (req.user || PUBLIC_PATHS.has(req.path)) return next();
+  if (req.user || PUBLIC_PATHS.has(req.path) || req.path.startsWith('/img/')) return next();
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
   return res.redirect('/login.html');
 });
