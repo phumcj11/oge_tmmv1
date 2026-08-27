@@ -46,12 +46,30 @@ function bars(items, valf, fmt, max) {
 
 // ================= DASHBOARD =================
 async function renderDashboard() {
-  const d = await api('/api/overview');
+  const [d, events, posm] = await Promise.all([api('/api/overview'), api('/api/events'), api('/api/posm')]);
   const t = d.tot;
   const el = $('#dashboard');
   const THM={1:'ม.ค.',2:'ก.พ.',3:'มี.ค.',4:'เม.ย.',5:'พ.ค.',6:'มิ.ย.',7:'ก.ค.',8:'ส.ค.',9:'ก.ย.',10:'ต.ค.',11:'พ.ย.',12:'ธ.ค.'};
   const ml = k => { const [y,m]=k.split('-'); return THM[+m]+' '+((+y)%100+43); };
   const months = Object.entries(d.month).sort();
+  // Event timeline (upcoming, else most recent)
+  const today = new Date().toISOString().slice(0, 10);
+  const EVT = { activation:'#2E9E1E', training:'#6A1B9A', testride:'#00897B', other:'#78909c' };
+  const EVTt = { activation:'กิจกรรมหน้าร้าน', training:'อบรม', testride:'ทดลองขับ', other:'อื่นๆ' };
+  const withDate = events.filter(e => e.start_date).sort((a, b) => a.start_date < b.start_date ? -1 : 1);
+  let upcoming = withDate.filter(e => e.start_date >= today).slice(0, 7);
+  if (upcoming.length < 2) upcoming = withDate.slice(-7).reverse();
+  const timelineHTML = upcoming.length ? upcoming.map(e => {
+    const c = EVT[e.type] || '#78909c', mm = +(e.start_date || '--').slice(5, 7);
+    return `<div class="tl-item"><div class="tl-date" style="border-color:${c}"><b>${(e.start_date||'').slice(8,10)}</b><span>${THM[mm]||''}</span></div>
+      <div class="tl-body"><b class="lnk" style="cursor:pointer" data-eid="${e.id}">${esc(e.activity_name || EVTt[e.type] || 'กิจกรรม')}</b>
+      <small class="sub">${esc(e.dealer_name || e.company || '-')} · <span style="color:${c}">${EVTt[e.type]||e.type}</span>${e.tier?' · ระดับ '+e.tier:''}</small></div></div>`;
+  }).join('') : '<div class="muted">ยังไม่มีกิจกรรม — ไปที่แท็บ Event เพื่อสร้าง</div>';
+  // POSM summary
+  const pOut = posm.filter(p => p.status === 'out').length, pLow = posm.filter(p => p.low).length,
+    pOver = posm.filter(p => p.overdue).length, pVal = posm.reduce((s, p) => s + (p.qty||0)*(p.unit_value||0), 0);
+  const pAlerts = [...posm.filter(p=>p.low).map(p=>`⚠️ ${esc(p.name)} เหลือ ${p.qty} (ขั้นต่ำ ${p.min_stock})`),
+    ...posm.filter(p=>p.overdue).map(p=>`⏰ ${esc(p.name)} เกินกำหนดคืน`)].slice(0, 4);
   el.innerHTML = `
   <div class="kpis">
     <div class="kpi"><div class="l">Sell-in รวม</div><div class="v">${baht(t.sellin)}</div><div class="s">บาท · ${t.po} PO</div></div>
@@ -77,7 +95,25 @@ async function renderDashboard() {
     <div class="card scroll"><h2>⚠️ ลูกหนี้ค้างชำระ</h2>
       <table><tr><th>Dealer</th><th>จังหวัด</th><th class="num">ค้างชำระ</th></tr>
       ${d.debtors.map(x=>`<tr><td>${esc(x.name)}<small class="sub">${x.code}</small></td><td>${esc(x.province)}</td><td class="num" style="color:#e53935">${baht(x.outstanding)}</td></tr>`).join('')}</table></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>📅 Timeline กิจกรรมที่จะถึง</h2>
+      <div class="timeline">${timelineHTML}</div></div>
+    <div class="card"><h2>📦 สรุป POSM</h2>
+      <div class="pstat">
+        <div class="ps"><b>${posm.length}</b><span>รายการ</span></div>
+        <div class="ps"><b style="color:#ef6c00">${pOut}</b><span>เบิกออก</span></div>
+        <div class="ps"><b style="color:${pLow?'#e53935':'#2e7d32'}">${pLow}</b><span>ใกล้หมด</span></div>
+        <div class="ps"><b style="color:${pOver?'#e53935':'#2e7d32'}">${pOver}</b><span>เกินกำหนดคืน</span></div>
+        <div class="ps"><b>${baht(pVal)}</b><span>มูลค่ารวม</span></div>
+      </div>
+      ${pAlerts.length ? `<div class="palerts">${pAlerts.map(a=>`<div>${a}</div>`).join('')}</div>` : '<div class="muted" style="margin-top:10px">✅ สต็อกปกติ ไม่มีแจ้งเตือน</div>'}
+    </div>
   </div>`;
+  el.querySelectorAll('.timeline .lnk[data-eid]').forEach(b => b.addEventListener('click', () => {
+    document.querySelector('.tab[data-t="events"]').click();
+    setTimeout(() => { const ev = (eventCache||[]).find(x => x.id == b.dataset.eid); if (ev) openEventEditor(ev); }, 300);
+  }));
   loadMap(d.region);
 }
 const RID = { 'กลาง':'klang','อีสาน':'isan','เหนือ':'nuea','กรุงเทพ ปริมณฑล':'bkk','ใต้':'tai' };
