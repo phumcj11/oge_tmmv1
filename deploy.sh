@@ -8,7 +8,8 @@
 # วิธีใช้บน VPS:  bash ~/tmm/deploy.sh   (หรือ cd /home/pcj/tmm && bash deploy.sh)
 # ============================================================
 set -e
-APP_DIR="/home/pcj/tmm"
+# path-relative: works on any VPS regardless of where the repo lives
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 PM2_NAME="ofero-tmm"
 
 cd "$APP_DIR"
