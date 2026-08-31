@@ -66,7 +66,7 @@ app.use((req, res, next) => {
 });
 // write-permission gate: viewer is read-only
 app.use((req, res, next) => {
-  if (['POST', 'PUT', 'DELETE'].includes(req.method) && req.user.role === 'viewer')
+  if (req.user && ['POST', 'PUT', 'DELETE'].includes(req.method) && req.user.role === 'viewer')
     return res.status(403).json({ error: 'บัญชีนี้เป็นแบบดูอย่างเดียว (viewer) แก้ไขไม่ได้' });
   next();
 });
@@ -78,7 +78,7 @@ const STAFF_WRITE_OK = [
   /^\/api\/attachments\/\d+$/,           // delete own — verified in handler
 ];
 app.use((req, res, next) => {
-  if (req.user.role === 'staff' && ['POST', 'PUT', 'DELETE'].includes(req.method)
+  if (req.user && req.user.role === 'staff' && ['POST', 'PUT', 'DELETE'].includes(req.method)
       && !STAFF_WRITE_OK.some(rx => rx.test(req.path)))
     return res.status(403).json({ error: 'พนักงานหน้างานทำได้เฉพาะการส่งงานของตนเอง' });
   next();
