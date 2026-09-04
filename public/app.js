@@ -169,6 +169,7 @@ function renderDealerList() {
       <span class="spacer"></span>
       <button class="btn ghost" id="dadd">➕ เพิ่ม Dealer</button>
       <button class="btn ghost" id="dexport">⬇ Export CSV</button>
+      <button class="btn ghost admin-only" data-import="dealers">⬆ นำเข้า Excel</button>
     </div>
     <div class="scroll"><table id="dtable"></table></div>
   </div>`;
@@ -1470,6 +1471,7 @@ async function renderSellout() {
   </div>
   <div class="card"><div class="toolbar"><h2 style="margin:0">📦 ขายออกตามรุ่น (เดือน ${selloutMonth})</h2></div>${modelBars}</div>
   <div class="card"><div class="toolbar"><h2 style="margin:0">รายการที่บันทึก (${rows.length})</h2><span class="spacer"></span>
+    <button class="btn ghost admin-only" data-import="sellout">⬆ นำเข้า Excel</button>
     <button class="btn ghost" id="soExport">⬇ Export CSV</button></div>
     <div class="scroll"><table id="soTable">
       <tr><th>Dealer</th><th>รุ่น</th><th class="num">ขายออก</th><th class="num">สต็อก</th><th>หมายเหตุ</th><th>อัปเดต</th><th></th></tr>
@@ -1658,6 +1660,7 @@ async function init() {
   catch (_) { location.href = '/login.html'; return; }
   currentUser = me;
   document.body.classList.toggle('role-viewer', me.role === 'viewer');
+  document.body.classList.toggle('role-admin', me.role === 'admin');
   renderUserbox();
   if (me.role === 'staff') { document.body.classList.add('role-staff'); $('#tabs').style.display = 'none'; renderStaff(); return; }
   if (me.role === 'admin') $('#usersTab').style.display = '';

@@ -338,3 +338,10 @@ th{background:#fafbfc;letter-spacing:.2px}
 .d3loc-side .fg{margin-bottom:8px}
 #d3coord{font-size:12px}
 @media(max-width:640px){.d3loc{grid-template-columns:1fr}#d3map{height:200px}}
+
+/* ---- Excel import ---- */
+body:not(.role-admin) .admin-only{display:none!important}
+.modal.wide{width:min(680px,94vw)}
+.im-stat{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;font-weight:600;margin-bottom:8px}
+.im-errs{background:#fff8f0;border-radius:8px;padding:8px 12px;font-size:12.5px;color:#b23c17;max-height:150px;overflow:auto;line-height:1.7;margin-top:6px}
+.err-box{background:#fdecea;color:#c62828;border-radius:8px;padding:9px 12px;font-size:13px}
