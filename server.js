@@ -452,7 +452,7 @@ app.post('/api/users', requireAdmin, (req, res) => {
   const b = req.body || {};
   const username = (b.username || '').trim();
   if (!username || !b.password) return res.status(400).json({ error: 'ต้องมี username และรหัสผ่าน' });
-  if (!['admin', 'editor', 'viewer', 'staff'].includes(b.role)) return res.status(400).json({ error: 'role ไม่ถูกต้อง' });
+  if (!['admin', 'editor', 'viewer', 'staff', 'tmm', 'approver', 'area_manager', 'area_sales', 'accounting', 'logistics', 'aftersales'].includes(b.role)) return res.status(400).json({ error: 'role ไม่ถูกต้อง' });
   if (db.prepare('SELECT 1 FROM users WHERE username=?').get(username)) return res.status(409).json({ error: 'username นี้มีอยู่แล้ว' });
   const salt = crypto.randomBytes(16).toString('hex');
   db.prepare('INSERT INTO users (username,name,salt,hash,role,created_at) VALUES (?,?,?,?,?,?)')
@@ -463,7 +463,7 @@ app.put('/api/users/:username', requireAdmin, (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE username=?').get(req.params.username);
   if (!u) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
   const b = req.body || {};
-  const role = ['admin', 'editor', 'viewer', 'staff'].includes(b.role) ? b.role : u.role;
+  const role = ['admin', 'editor', 'viewer', 'staff', 'tmm', 'approver', 'area_manager', 'area_sales', 'accounting', 'logistics', 'aftersales'].includes(b.role) ? b.role : u.role;
   // don't allow removing the last admin
   if (u.role === 'admin' && role !== 'admin' &&
       db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c <= 1)
@@ -598,4 +598,5 @@ app.delete('/api/audit/:id', (req, res) => {
 
 const PORT = process.env.PORT || 4173;
 require('./import')(app, db);
+require('./lifecycle')(app, db);
 app.listen(PORT, () => console.log(`Ofero TMM system running at http://localhost:${PORT}`));

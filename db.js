@@ -144,4 +144,7 @@ init();
 const empty = db.prepare('SELECT COUNT(*) c FROM dealers').get().c === 0;
 if (process.argv.includes('--seed') || empty) seed();
 
+// ---- Phase 1: Trade Marketing lifecycle schema (additive) ----
+require('./lifecycle-schema')(db);
+
 module.exports = db;
