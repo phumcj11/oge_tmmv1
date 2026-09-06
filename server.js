@@ -602,4 +602,5 @@ require('./lifecycle')(app, db);
 require('./scoring')(app, db);
 require('./execution')(app, db);
 require('./evaluation')(app, db);
+require('./dashboard')(app, db);
 app.listen(PORT, () => console.log(`Ofero TMM system running at http://localhost:${PORT}`));
