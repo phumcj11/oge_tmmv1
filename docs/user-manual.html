@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --green:#2E9E1E; --lime:#6FD749; --dark:#111; --ink:#1a2027; --muted:#667085; --line:#e4e7ec; }
+  *{ box-sizing:border-box; }
+  body{ font-family:'Noto Sans Thai','Sarabun',sans-serif; color:var(--ink); font-size:12px; line-height:1.65; margin:0; }
+  @page{ size:A4; margin:16mm 15mm 18mm 15mm; }
+  h1,h2,h3{ color:var(--dark); line-height:1.3; }
+  h2{ font-size:18px; border-bottom:3px solid var(--green); padding-bottom:5px; margin:26px 0 12px; color:var(--green); }
+  h3{ font-size:14px; margin:16px 0 6px; color:#10260a; }
+  p{ margin:6px 0; }
+  code{ background:#f3f5f7; padding:1px 5px; border-radius:4px; font-size:11px; }
+  table{ width:100%; border-collapse:collapse; margin:8px 0 14px; font-size:11px; }
+  th,td{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+  th{ background:#f0f7ee; color:#10260a; font-weight:700; }
+  tr:nth-child(even) td{ background:#fafbfc; }
+  ol,ul{ margin:6px 0 10px; padding-left:22px; }
+  li{ margin:3px 0; }
+  .cover{ height:247mm; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;
+    background:linear-gradient(135deg,#111,#2E9E1E); color:#fff; margin:-16mm -15mm 0; padding:0 20mm; }
+  .cover .logo{ font-size:44px; font-weight:800; letter-spacing:1px; }
+  .cover .logo span{ color:var(--lime); }
+  .cover h1{ color:#fff; font-size:30px; margin:18px 0 6px; }
+  .cover .sub{ font-size:15px; opacity:.9; }
+  .cover .meta{ margin-top:40px; font-size:12px; opacity:.85; }
+  .badge{ display:inline-block; background:var(--green); color:#fff; border-radius:6px; padding:1px 8px; font-size:10px; font-weight:600; }
+  .tag{ display:inline-block; background:#eef7ea; color:#10260a; border:1px solid #cfe6c4; border-radius:6px; padding:1px 7px; font-size:10px; margin:1px 2px; }
+  .note{ background:#fff8f0; border-left:4px solid #e8a13a; padding:8px 12px; border-radius:6px; margin:10px 0; font-size:11px; }
+  .tip{ background:#eef7ea; border-left:4px solid var(--green); padding:8px 12px; border-radius:6px; margin:10px 0; font-size:11px; }
+  .flow{ background:#f7faf6; border:1px solid #d7ead0; border-radius:10px; padding:12px 14px; margin:10px 0; font-weight:600; color:#10260a; text-align:center; font-size:12px; }
+  .page-break{ page-break-before:always; }
+  section{ page-break-inside:avoid; }
+  .foot{ text-align:center; color:var(--muted); font-size:10px; margin-top:30px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="logo">F<span>ofero</span></div>
+  <h1>คู่มือการใช้งานระบบ</h1>
+  <div class="sub">Ofero TMM System — ระบบบริหารงาน Trade Marketing</div>
+  <div class="meta">เวอร์ชัน 1.0 · ครอบคลุม SOP 001–005<br>สำหรับผู้ใช้งานทุกบทบาท (TMM / Approver / Area / Accounting / Staff)</div>
+</div>
+
+<div class="page-break"></div>
+
+<h2>1. เริ่มต้นใช้งาน</h2>
+<section>
+<h3>1.1 เข้าสู่ระบบ</h3>
+<ol>
+  <li>เปิดเว็บเบราว์เซอร์ไปที่ที่อยู่ของระบบ (เช่น <code>https://oge.k-mkt.com</code>)</li>
+  <li>กรอก <b>ชื่อผู้ใช้</b> และ <b>รหัสผ่าน</b> ที่ผู้ดูแลระบบให้มา แล้วกด "เข้าสู่ระบบ"</li>
+  <li>ผู้ดูแลระบบเริ่มต้นคือ <code>admin</code> — <span class="badge">ควรเปลี่ยนรหัสผ่านหลังเข้าใช้ครั้งแรก</span></li>
+</ol>
+<div class="note">ระบบรองรับมือถือ — พนักงานหน้างาน (staff) เข้าผ่านมือถือจะเห็นเฉพาะ "งานของฉัน"</div>
+
+<h3>1.2 บทบาทผู้ใช้ (Roles) และสิทธิ์</h3>
+<table>
+  <tr><th>บทบาท</th><th>ทำอะไรได้</th></tr>
+  <tr><td><b>admin</b></td><td>ทุกอย่าง + จัดการผู้ใช้/ระบบ</td></tr>
+  <tr><td><b>tmm</b> (Trade Marketing Manager)</td><td>สร้าง/แก้แคมเปญ, ให้คะแนนร้าน, ล็อกเวอร์ชัน, ตั้ง Readiness, บันทึกผลประเมิน</td></tr>
+  <tr><td><b>approver</b> (RGM)</td><td>อนุมัติแคมเปญ/งบ, อนุมัติรอบคะแนน, Override Tier, อนุมัติผล Review</td></tr>
+  <tr><td><b>area_manager</b> / <b>area_sales</b></td><td>งานหน้างานในพื้นที่ (เห็นเฉพาะ region ที่รับผิดชอบ)</td></tr>
+  <tr><td><b>accounting</b></td><td>ยืนยันค่าใช้จ่าย + ยืนยัน ROI (บัญชี)</td></tr>
+  <tr><td><b>viewer</b></td><td>ดูอย่างเดียว</td></tr>
+  <tr><td><b>staff</b></td><td>พนักงานหน้างาน — ส่งผล/แนบรูปเฉพาะงานที่ได้รับมอบหมาย</td></tr>
+</table>
+
+<h3>1.3 แท็บเมนู</h3>
+<p>แถบเมนูด้านบนแบ่งเป็น 2 กลุ่ม:</p>
+<p><b>งานประจำวัน:</b> <span class="tag">Dashboard</span><span class="tag">Dealer</span><span class="tag">โครงการ</span><span class="tag">Event</span><span class="tag">POSM</span><span class="tag">Sell-out</span><span class="tag">มาตรฐานร้าน</span></p>
+<p><b>วงจร Campaign (SOP):</b> <span class="tag">🎯 Campaign</span><span class="tag">📊 จัดลำดับ</span><span class="tag">⚙️ Execution</span><span class="tag">📈 ประเมินผล</span><span class="tag">🧭 TM Board</span></p>
+</section>
+
+<h2>2. วงจรงานหลัก (ภาพรวมการใช้งาน)</h2>
+<section>
+<div class="flow">จัดลำดับร้าน → สร้าง Campaign + Brief → ผ่าน Readiness Gate → ขออนุมัติ → ล็อก Version → Execution หน้างาน → ประเมินผล ROI → ปิดงาน → เรียนรู้สู่รอบถัดไป</div>
+<p>ทุกอย่างเชื่อมกันด้วยรหัส <b>Campaign ID · Version · Dealer ID · Action ID</b> ทำให้ติดตามย้อนหลังได้ตลอดเส้นทาง</p>
+</section>
+
+<h2>3. จัดลำดับร้าน (Dealer Priority)</h2>
+<section>
+<p>ใช้จัดอันดับความสำคัญของร้านด้วยเกณฑ์เดียวกันทั้งประเทศ → ได้ Tier (A/B/C/D/Hold)</p>
+<h3>ขั้นตอน (TMM)</h3>
+<ol>
+  <li>ไปที่แท็บ <b>📊 จัดลำดับ</b> → กด <b>➕ รอบใหม่</b> ตั้งชื่อรอบ เช่น <code>2026-Q4</code></li>
+  <li>กด <b>➕ ให้คะแนนร้าน</b> → เลือกร้าน + ให้คะแนน 6 หมวด (เต็ม 100):
+    ยอดขาย 25 · ศักยภาพ 20 · โอกาส 15 · Stock 15 · Execution 15 · เครดิต/บริการ 10</li>
+  <li>ระบบคำนวณ Tier ให้อัตโนมัติ: <b>A ≥ 80 · B ≥ 65 · C ≥ 50 · D &lt; 50</b></li>
+  <li>ถ้าร้านมีความเสี่ยง ให้ติ๊ก <b>Critical Gate = Hold</b> → Tier จะเป็น Hold แม้คะแนนสูง</li>
+</ol>
+<h3>อนุมัติ (Approver)</h3>
+<ol>
+  <li>กด <b>✅ อนุมัติรอบ</b> → ระบบล็อกคะแนน + อัปเดต Tier เข้าทะเบียนร้านให้อัตโนมัติ</li>
+  <li>หากต้องปรับ Tier ด้วยเหตุผลเชิงกลยุทธ์ → ใช้ <b>Override</b> (ต้องระบุเหตุผล + วันหมดอายุ)</li>
+</ol>
+<div class="note"><b>สำคัญ:</b> ให้คะแนนไม่ครบ 6 หมวด = "Missing Data" (ไม่จัด Tier) — ห้ามเดา/ใส่ศูนย์ · คะแนนแต่ละรอบเก็บแยกเป็นประวัติ ไม่เขียนทับรอบเดิม</div>
+</section>
+
+<div class="page-break"></div>
+
+<h2>4. Campaign — สร้าง อนุมัติ ล็อก</h2>
+<section>
+<h3>4.1 สร้างแคมเปญ (TMM)</h3>
+<ol>
+  <li>แท็บ <b>🎯 Campaign</b> → กด <b>➕ สร้างแคมเปญ</b> → กรอกชื่อ/วัตถุประสงค์/ประเภท/ภูมิภาค/งบแผน</li>
+  <li>ระบบสร้าง <b>Campaign ID</b> อัตโนมัติ (เช่น <code>CMP-2026-001</code>) สถานะเริ่มต้น = Draft</li>
+  <li>คลิกที่แคมเปญเพื่อเปิดรายละเอียด — กรอก Brief และตั้งค่าต่างๆ</li>
+</ol>
+<h3>4.2 Readiness Gate (7 ข้อ)</h3>
+<p>ในหน้ารายละเอียดแคมเปญ ตั้งสถานะความพร้อม 7 ด้าน: Brief · Dealer · Budget · Stock · POSM · Execution · Risk<br>
+แต่ละด้านเลือก <b>Ready / Pending / Not Ready</b> → ระบบสรุปเป็น Overall</p>
+<div class="note"><b>บล็อกจริง:</b> ถ้ายังไม่ Ready ครบ จะ <b>ส่งขออนุมัติไม่ได้</b> (เว้นมี Exception ที่อนุมัติ)</div>
+<h3>4.3 ขออนุมัติ → อนุมัติ → ล็อก</h3>
+<ol>
+  <li><b>TMM:</b> กด "ส่งขออนุมัติ" (สถานะ → Pending Approval)</li>
+  <li><b>Approver:</b> เปิดแคมเปญ → กด "✅ อนุมัติ" หรือ "✕ ปฏิเสธ"</li>
+  <li><b>TMM:</b> เมื่ออนุมัติแล้ว กด "🔒 ล็อก Version"</li>
+</ol>
+<div class="note"><b>Version Lock:</b> แคมเปญที่ล็อกแล้ว <b>แก้สาระสำคัญไม่ได้</b> — ต้องกด "✎ Change Request" เพื่อสร้างเวอร์ชันใหม่ (ระบุเหตุผล) แล้วเริ่มขออนุมัติใหม่</div>
+<div class="tip">ทุกการเปลี่ยนสถานะ/อนุมัติ ถูกบันทึกใน <b>ประวัติ (Audit)</b> ในหน้ารายละเอียด — ใคร/เมื่อ/ค่าเดิม/ใหม่</div>
+</section>
+
+<h2>5. Execution — หน้างาน</h2>
+<section>
+<p>แท็บ <b>⚙️ Execution</b> → เลือกแคมเปญ จะเห็น 5 การ์ด:</p>
+<table>
+  <tr><th>การ์ด</th><th>ใช้ทำอะไร</th></tr>
+  <tr><td>🚦 Opening Readiness</td><td>ตรวจก่อนเปิดร้าน (6 จุด) → ระบบสรุปเป็น <b>Go / Hold</b></td></tr>
+  <tr><td>📈 Live KPI</td><td>บันทึกยอดระหว่างวัน (เป้า vs จริง → On Pace / Below Pace)</td></tr>
+  <tr><td>🚨 Incident</td><td>แจ้งเหตุ — เลือก Level (Critical/High/Medium/Low) ระบบกำหนด <b>SLA + ผู้ที่ต้องแจ้ง</b> ให้อัตโนมัติ · กด "จัดการ" เพื่อปิดเหตุ</td></tr>
+  <tr><td>💰 Expense</td><td>บันทึกค่าใช้จ่าย — <b>จ่ายจริงต้องอ้าง Approval ID</b> · ฝ่ายบัญชีกด "ยืนยัน"</td></tr>
+  <tr><td>📋 Daily Close</td><td>ปิดยอดประจำวัน (ติ๊กครบ + ไม่มี issue ค้าง → Complete)</td></tr>
+</table>
+</section>
+
+<h2>6. ประเมินผล (Post-Campaign)</h2>
+<section>
+<p>แท็บ <b>📈 ประเมินผล</b> → เลือกแคมเปญ จะเห็น 6 การ์ด:</p>
+<table>
+  <tr><th>การ์ด</th><th>ใช้ทำอะไร</th></tr>
+  <tr><td>💵 ROI</td><td>กรอก Baseline/Actual units, Contribution/unit, งบ, จ่ายจริง → ระบบคำนวณ <b>ROI แบบ incremental</b></td></tr>
+  <tr><td>🔻 Funnel</td><td>Footfall → Lead → Test → Sale (ข้อมูลขาดแสดงว่าง ไม่ใช่ 0)</td></tr>
+  <tr><td>⚖️ Dealer Comparison</td><td>เทียบร้านหลายมิติ → ข้อมูลไม่ครบ = "Insufficient Data"</td></tr>
+  <tr><td>📝 Review & Decision</td><td>สรุป + ตัดสินใจ: Repeat / Revise / Stop / Test Further / Hold (Approver อนุมัติ)</td></tr>
+  <tr><td>🛠️ Corrective Actions</td><td>งานแก้ไข — มี Owner/กำหนดเสร็จ/สถานะ (Open→Closed)</td></tr>
+  <tr><td>🏁 Closure</td><td>ติ๊ก 6 gate ให้ครบ → ปิดแคมเปญ (สถานะ Closed)</td></tr>
+</table>
+<div class="note"><b>ROI สถานะ:</b> <b>Calculated</b> = คำนวณได้ + บัญชียืนยัน · <b>Directional</b> = คำนวณได้แต่บัญชียังไม่ยืนยัน · <b>Not Calculated</b> = ข้อมูลไม่พอ (ขาด baseline หรือจ่ายจริง=0) — ระบบไม่เดา ROI</div>
+</section>
+
+<h2>7. TM Control Board</h2>
+<section>
+<p>แท็บ <b>🧭 TM Board</b> = ศูนย์ควบคุม รวมทุกอย่างที่ต้องจัดการในหน้าเดียว:</p>
+<ul>
+  <li>แคมเปญตามสถานะ · จำนวน <b>รออนุมัติ</b> · ยังไม่ผ่าน Readiness · ปิดแล้ว</li>
+  <li><b>Incident เปิดค้าง</b> (เน้น Critical/High) · <b>SLA เกิน</b></li>
+  <li><b>Corrective Action เกินกำหนด</b></li>
+  <li>สรุป <b>ROI</b> · งบแผน vs จ่ายจริง · Tier distribution</li>
+  <li>รายการที่ต้องจัดการ: รออนุมัติ / Incident ค้าง / Action เกินกำหนด</li>
+</ul>
+<div class="tip">เปิด TM Board ทุกเช้าเพื่อเห็นว่าวันนี้ต้องจัดการอะไรบ้าง</div>
+</section>
+
+<div class="page-break"></div>
+
+<h2>8. โมดูลงานประจำวัน (โดยย่อ)</h2>
+<section>
+<table>
+  <tr><th>แท็บ</th><th>ใช้ทำอะไร</th></tr>
+  <tr><td>📊 Dashboard</td><td>ภาพรวมยอดขาย/กำไร/ค้างชำระ ตามรุ่น·ภาค·เดือน + แผนที่</td></tr>
+  <tr><td>🏪 Dealer</td><td>ทะเบียนร้าน · แผนที่ · AI Insights · Dealer 360° (ดู/แก้ข้อมูลร้านรายร้าน)</td></tr>
+  <tr><td>📁 โครงการ</td><td>จัดกลุ่มกิจกรรมเป็นโครงการ + สรุปงบ/KPI รวม</td></tr>
+  <tr><td>🎪 Event</td><td>กิจกรรมหน้าร้าน (ตาราง/ปฏิทิน/Gantt/Kanban) + แนบรูป + เป้า vs ผล</td></tr>
+  <tr><td>📦 POSM</td><td>คลังสื่อ เบิก-คืน + แจ้งเตือนของใกล้หมด</td></tr>
+  <tr><td>📈 Sell-out</td><td>บันทึกยอดขายออก/สต็อก รายเดือน·ร้าน·รุ่น</td></tr>
+  <tr><td>🏬 มาตรฐานร้าน</td><td>ประเมินร้าน checklist 7 ข้อ → % ความพร้อม + funnel</td></tr>
+</table>
+<h3>นำเข้าข้อมูลจาก Excel (admin)</h3>
+<p>ที่แท็บ Dealer / Sell-out มีปุ่ม <b>⬆ นำเข้า Excel</b> → เลือกชนิด → ดาวน์โหลด template → อัปโหลดไฟล์ → <b>ดูตัวอย่าง (preview)</b> ว่าจะเพิ่ม/อัปเดตกี่แถว → กด "ยืนยันนำเข้า"</p>
+</section>
+
+<h2>9. กฎสำคัญที่ต้องรู้</h2>
+<section>
+<ol>
+  <li><b>ข้อมูลขาด ≠ ศูนย์</b> — ให้ปล่อยว่าง/ใช้สถานะ Missing ห้ามใส่ 0 มั่ว</li>
+  <li><b>ต้องอนุมัติก่อนทำ</b> — ห้าม launch/ก่อค่าใช้จ่ายจากแคมเปญที่ยังไม่อนุมัติ</li>
+  <li><b>ล็อกแล้วแก้ไม่ได้</b> — ต้อง Change Request → เวอร์ชันใหม่</li>
+  <li><b>ROI ต้องผ่านบัญชี</b> — จึงจะเป็น "Calculated"; ไม่พอข้อมูล = Not Calculated</li>
+  <li><b>เทียบร้านหลายมิติ</b> — ห้ามตัดสินจากยอดขายค่าเดียว</li>
+  <li><b>ทุกการอนุมัติ/เปลี่ยนสถานะสำคัญมีบันทึก (Audit)</b> — ตรวจย้อนได้เสมอ</li>
+  <li><b>เห็นเฉพาะพื้นที่ของตน</b> — ผู้ใช้ระดับ Area เห็นเฉพาะ region ที่รับผิดชอบ</li>
+</ol>
+</section>
+
+<h2>10. คำถามพบบ่อย</h2>
+<section>
+<table>
+  <tr><th>ปัญหา</th><th>วิธีแก้</th></tr>
+  <tr><td>กด "ส่งขออนุมัติ" ไม่ได้</td><td>ตรวจ Readiness Gate ให้ Ready ครบ 7 ข้อก่อน</td></tr>
+  <tr><td>แก้แคมเปญไม่ได้ (409)</td><td>แคมเปญถูกล็อกแล้ว → ใช้ "Change Request" สร้างเวอร์ชันใหม่</td></tr>
+  <tr><td>ใส่คะแนนร้านไม่ได้</td><td>รอบประเมินถูกอนุมัติ (ล็อก) แล้ว → สร้างรอบใหม่</td></tr>
+  <tr><td>ROI ขึ้น "Not Calculated"</td><td>ข้อมูลไม่ครบ (ขาด baseline/contribution) หรือจ่ายจริง = 0</td></tr>
+  <tr><td>ไม่เห็นบางเมนู/ปุ่ม</td><td>เป็นเรื่องสิทธิ์ตามบทบาท (role) — ติดต่อผู้ดูแลระบบ</td></tr>
+  <tr><td>หน้าเว็บค้าง/เพี้ยนบนมือถือ</td><td>ล้าง cache หรือเปิดแท็บส่วนตัว (Private) แล้วเข้าใหม่</td></tr>
+</table>
+</section>
+
+<div class="foot">Ofero TMM System — คู่มือการใช้งาน v1.0 · เอกสารภายในสำหรับทีม Trade Marketing</div>
+
+</body>
+</html>
