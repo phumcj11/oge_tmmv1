@@ -148,5 +148,6 @@ if (process.argv.includes('--seed') || empty) seed();
 require('./lifecycle-schema')(db);
 require('./scoring-schema')(db);
 require('./execution-schema')(db);
+require('./evaluation-schema')(db);
 
 module.exports = db;

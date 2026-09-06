@@ -1228,6 +1228,7 @@ function render(t) {
   else if (t === 'campaigns') { if (window.renderCampaigns) renderCampaigns(); }
   else if (t === 'scoring') { if (window.renderScoring) renderScoring(); }
   else if (t === 'execution') { if (window.renderExecution) renderExecution(); }
+  else if (t === 'evaluation') { if (window.renderEvaluation) renderEvaluation(); }
   else if (t === 'dealers') renderDealers();
   else if (t === 'projects') renderProjects();
   else if (t === 'events') renderEvents();
