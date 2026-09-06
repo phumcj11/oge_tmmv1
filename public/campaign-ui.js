@@ -75,6 +75,7 @@
         ${c.versions.map(v => `<tr><td>v${v.version}</td><td>${esc(v.brief_status)}</td><td>${v.locked ? '🔒 ' + esc((v.locked_at || '').slice(0, 10)) : '-'}</td><td>${esc(v.created_by)}</td></tr>`).join('')}</table></div>
       ${c.approvals.length ? `<div class="muted" style="margin-top:8px">การอนุมัติ</div><div class="scroll" style="max-height:100px"><table class="mini"><tr><th>Ver</th><th>ประเภท</th><th>ผล</th><th>ผู้อนุมัติ</th></tr>
         ${c.approvals.map(a => `<tr><td>v${a.version}</td><td>${esc(a.type)}</td><td>${esc(a.decision)}</td><td>${esc(a.approver)}</td></tr>`).join('')}</table></div>` : ''}
+      <div id="c-readiness"></div>
       <div id="c-audit"></div>
       <div class="modal-act" style="flex-wrap:wrap">${acts}<button class="btn ghost" id="c-close">ปิด</button></div>`);
     const q = s => bg.querySelector(s);
@@ -86,6 +87,23 @@
         q('#c-audit').innerHTML = `<div class="muted" style="margin-top:8px">ประวัติ (audit)</div><div class="im-errs" style="color:#475467;max-height:120px">${logs.map(l => `<div>${esc((l.at || '').slice(0, 16).replace('T', ' '))} · ${esc(l.action)}${l.old_value || l.new_value ? ': ' + esc(l.old_value) + '→' + esc(l.new_value) : ''} · ${esc(l.actor)}${l.reason ? ' ('+esc(l.reason)+')' : ''}</div>`).join('')}</div>`;
       });
     }
+    // readiness gate
+    (async () => {
+      let rd; try { rd = await api('/api/campaigns/' + c.id + '/readiness'); } catch (_) { return; }
+      const GATES = [['brief','Brief'],['dealer','Dealer'],['budget','Budget'],['stock','Stock'],['posm','POSM'],['execution','Execution'],['risk','Risk']];
+      const OV = { 'Ready':'#2e7d32','Pending':'#b8860b','Not Ready':'#c62828' };
+      const editable = ['tmm','admin'].includes(role());
+      const opt = v => ['Ready','Pending','Not Ready'].map(o=>`<option${o===v?' selected':''}>${o}</option>`).join('');
+      q('#c-readiness').innerHTML = `<div class="muted" style="margin-top:8px">Readiness Gate — <b id="rd-ov" style="color:${OV[rd.overall_status]||'#78909c'}">${esc(rd.overall_status)}</b></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-top:4px">${GATES.map(g=>`<label style="font-size:12px">${g[1]}<select data-gate="${g[0]}" ${editable?'':'disabled'} style="width:100%">${opt(rd[g[0]])}</select></label>`).join('')}</div>`;
+      if (editable) q('#c-readiness').querySelectorAll('select[data-gate]').forEach(sel => sel.addEventListener('change', async () => {
+        const body = {}; body[sel.dataset.gate] = sel.value;
+        const r = await fetch('/api/campaigns/'+c.id+'/readiness', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const d = await r.json(); if (!r.ok) return toast(d.error||'error');
+        const ov = q('#rd-ov'); if (ov) { ov.textContent = d.overall_status; ov.style.color = OV[d.overall_status]||'#78909c'; }
+        toast('Readiness: '+d.overall_status);
+      }));
+    })();
     // wire actions
     const doAct = async (path, body, okMsg) => {
       const r = await fetch('/api/campaigns/' + c.id + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });

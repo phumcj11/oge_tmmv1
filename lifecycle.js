@@ -137,6 +137,11 @@ module.exports = function (app, db) {
     const to = (req.body || {}).to, reason = (req.body || {}).reason || '';
     const allowed = TRANSITIONS[c.work_status] || [];
     if (!allowed.includes(to)) return res.status(409).json({ error: `เปลี่ยนจาก "${c.work_status}" → "${to}" ไม่ได้ (อนุญาต: ${allowed.join(', ') || '—'})` });
+    if (to === 'Pending Approval') {
+      const r = db.prepare('SELECT * FROM readiness_checks WHERE campaign_id=? AND version=?').get(c.id, c.current_version);
+      const ready = r && (r.overall_status === 'Ready' || (r.exception_ref && r.exception_ref !== ''));
+      if (!ready) return res.status(409).json({ error: 'ยังผ่าน Readiness Gate ไม่ครบ (ต้อง Ready หรือมี Exception) ก่อนส่งขออนุมัติ' });
+    }
     const role = req.user.role;
     const launchStates = ['Ready to Launch', 'In Progress'];
     const ok = role === 'admin' || role === 'tmm' || (launchStates.includes(to) && role === 'area_manager');
