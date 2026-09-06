@@ -147,5 +147,6 @@ if (process.argv.includes('--seed') || empty) seed();
 // ---- Phase 1: Trade Marketing lifecycle schema (additive) ----
 require('./lifecycle-schema')(db);
 require('./scoring-schema')(db);
+require('./execution-schema')(db);
 
 module.exports = db;

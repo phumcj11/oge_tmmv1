@@ -600,4 +600,5 @@ const PORT = process.env.PORT || 4173;
 require('./import')(app, db);
 require('./lifecycle')(app, db);
 require('./scoring')(app, db);
+require('./execution')(app, db);
 app.listen(PORT, () => console.log(`Ofero TMM system running at http://localhost:${PORT}`));

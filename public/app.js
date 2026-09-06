@@ -1227,6 +1227,7 @@ function render(t) {
   if (t === 'dashboard') renderDashboard();
   else if (t === 'campaigns') { if (window.renderCampaigns) renderCampaigns(); }
   else if (t === 'scoring') { if (window.renderScoring) renderScoring(); }
+  else if (t === 'execution') { if (window.renderExecution) renderExecution(); }
   else if (t === 'dealers') renderDealers();
   else if (t === 'projects') renderProjects();
   else if (t === 'events') renderEvents();
